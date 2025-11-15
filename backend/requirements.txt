@@ -9,6 +9,6 @@ Requests==2.32.5
 scipy==1.16.3
 ultralytics==8.3.228
 uvicorn==0.38.0
-'fastapi[standard]'
-'uvicorn[standard]'
+fastapi[standard]
+uvicorn[standard]
 websockets
