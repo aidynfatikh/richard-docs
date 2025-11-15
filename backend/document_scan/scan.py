@@ -302,6 +302,76 @@ class DocScanner(object):
         cv2.imwrite(OUTPUT_DIR + '/' + basename, thresh)
         print("Proccessed " + basename)
 
+    def scan_image_bytes(self, image_bytes):
+        """
+        Scans an image from bytes and returns the transformed image and corner coordinates.
+
+        Args:
+            image_bytes (bytes): Image data as bytes
+
+        Returns:
+            dict: {
+                'transformed_image': bytes (JPEG encoded transformed image),
+                'corners': list of 4 (x, y) tuples (corner coordinates on original image),
+                'success': bool (whether document was detected)
+            }
+        """
+        RESCALED_HEIGHT = 500.0
+
+        # Decode image from bytes
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            return {
+                'transformed_image': None,
+                'corners': None,
+                'success': False,
+                'error': 'Failed to decode image'
+            }
+
+        # Calculate ratio for coordinate transformation
+        ratio = image.shape[0] / RESCALED_HEIGHT
+        orig = image.copy()
+        rescaled_image = imutils.resize(image, height=int(RESCALED_HEIGHT))
+
+        # Get the contour of the document
+        screenCnt = self.get_contour(rescaled_image)
+
+        # Scale coordinates back to original image size
+        original_corners = (screenCnt * ratio).astype(int).tolist()
+
+        # Apply perspective transformation
+        warped = transform.four_point_transform(orig, screenCnt * ratio)
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+
+        # Sharpen image
+        sharpen = cv2.GaussianBlur(gray, (0, 0), 3)
+        sharpen = cv2.addWeighted(gray, 1.5, sharpen, -0.5, 0)
+
+        # Apply adaptive threshold to get black and white effect
+        thresh = cv2.adaptiveThreshold(sharpen, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY, 21, 15)
+
+        # Encode transformed image to JPEG
+        success, encoded_image = cv2.imencode('.jpg', thresh)
+
+        if not success:
+            return {
+                'transformed_image': None,
+                'corners': original_corners,
+                'success': False,
+                'error': 'Failed to encode transformed image'
+            }
+
+        return {
+            'transformed_image': encoded_image.tobytes(),
+            'corners': original_corners,
+            'success': True
+        }
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

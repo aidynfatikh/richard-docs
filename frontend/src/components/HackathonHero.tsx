@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { validateFile, formatFileSize, getAcceptAttribute } from '../utils/fileValidation';
 import { apiService } from '../services/api.service';
 import type { DetectionResponse } from '../types/api.types';
+import { detectDevice } from '../utils/deviceDetection';
 
 export function HackathonHero() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export function HackathonHero() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = detectDevice().isMobile;
 
   // Auto-clear error after 5 seconds
   useEffect(() => {
@@ -165,8 +167,37 @@ export function HackathonHero() {
             Automated detection of signatures, stamps & QR codes
           </h2>
 
+          {/* Mobile Camera Scan Button */}
+          {isMobile && (
+            <div className="mb-6">
+              <button
+                onClick={() => navigate('/scan')}
+                className="px-8 py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-3"
+                style={{
+                  backgroundColor: 'rgba(0, 23, 255, 1)',
+                  color: 'rgba(255, 255, 255, 1)'
+                }}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Scan with Camera
+              </button>
+            </div>
+          )}
+
+          {/* Or Divider for mobile */}
+          {isMobile && (
+            <div className="flex items-center gap-4 mb-6 w-full max-w-md">
+              <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(153, 153, 153, 0.3)' }}></div>
+              <span className="text-sm" style={{ color: 'rgba(153, 153, 153, 1)' }}>or upload files</span>
+              <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(153, 153, 153, 0.3)' }}></div>
+            </div>
+          )}
+
           {/* File Upload Area */}
-          <div className="flex flex-col items-center mt-8 sm:mt-12 md:mt-16 max-w-4xl mx-auto">
+          <div className="flex flex-col items-center max-w-4xl mx-auto w-full">
             <input
               ref={fileInputRef}
               type="file"

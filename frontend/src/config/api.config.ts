@@ -11,6 +11,8 @@ export const API_CONFIG = {
   ENDPOINTS: {
     DETECT: '/detect',
     HEALTH: '/health',
+    SCAN_DOCUMENT: '/scan-document',
+    BATCH_DETECT: '/batch-detect',
   },
   
   // Request timeout in milliseconds
