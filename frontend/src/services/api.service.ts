@@ -10,6 +10,8 @@ import type {
   HealthResponse,
   APIResponse,
   APIError,
+  ScanDocumentResponse,
+  BatchDetectionResponse,
 } from '../types/api.types';
 
 /**
@@ -208,6 +210,94 @@ class APIService {
     }
 
     return results;
+  }
+
+  /**
+   * Scan a document image to detect boundaries and get perspective-corrected version
+   * @param file - Image file to scan
+   */
+  async scanDocument(file: File): Promise<APIResponse<ScanDocumentResponse>> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetchWithTimeout(
+        this.getURL(API_CONFIG.ENDPOINTS.SCAN_DOCUMENT),
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      return handleResponse<ScanDocumentResponse>(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Document scan request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * Detect document elements in multiple images in a single batch request
+   * @param files - Array of image files
+   * @param confidence - Optional confidence threshold (0-1)
+   */
+  async batchDetect(
+    files: File[],
+    confidence?: number
+  ): Promise<APIResponse<BatchDetectionResponse>> {
+    try {
+      const formData = new FormData();
+
+      // Append all files with the same key name
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      // Add optional confidence parameter
+      const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT));
+      if (confidence !== undefined) {
+        url.searchParams.append('confidence', confidence.toString());
+      }
+
+      const response = await fetchWithTimeout(
+        url.toString(),
+        {
+          method: 'POST',
+          body: formData,
+        },
+        60000 // 60 second timeout for batch processing
+      );
+
+      return handleResponse<BatchDetectionResponse>(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Batch detection request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * Convert a base64 data URL to a File object
+   * @param dataUrl - Base64 data URL
+   * @param filename - Filename for the created file
+   */
+  dataUrlToFile(dataUrl: string, filename: string): File {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
   }
 }
 

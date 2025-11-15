@@ -1,20 +1,29 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { DetectionResponse } from '../types/api.types';
+import type { DetectionResponse, BatchDetectionResponse } from '../types/api.types';
 import { HackathonHeader } from '../components/HackathonHeader';
 import { HackathonFooter } from '../components/HackathonFooter';
 import { ImageWithDetections } from '../components/ImageWithDetections';
+import { detectDevice } from '../utils/deviceDetection';
 
 interface SolutionPageState {
-  results: Array<{ fileName: string; fileObject: File; data: DetectionResponse }>;
+  results?: Array<{ fileName: string; fileObject: File; data: DetectionResponse }>;
+  batchResults?: BatchDetectionResponse;
 }
 
 export function SolutionPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as SolutionPageState | null;
+  const isMobile = detectDevice().isMobile;
+
+  // Handle batch results from mobile scanner
+  const isBatchMode = state?.batchResults !== undefined;
+  const results = isBatchMode
+    ? state.batchResults!.results.filter(r => r.success)
+    : state?.results || [];
 
   // Redirect if no results
-  if (!state || !state.results || state.results.length === 0) {
+  if (!state || (results.length === 0)) {
     return (
       <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
         <HackathonHeader />
@@ -43,18 +52,30 @@ export function SolutionPage() {
     );
   }
 
-  const { results } = state;
-
   // Calculate overall statistics
-  const totalDetections = results.reduce((sum, r) => sum + r.data.summary.total_detections, 0);
-  const totalStamps = results.reduce((sum, r) => sum + r.data.summary.total_stamps, 0);
-  const totalSignatures = results.reduce((sum, r) => sum + r.data.summary.total_signatures, 0);
-  const totalQRs = results.reduce((sum, r) => sum + r.data.summary.total_qrs, 0);
-  const avgProcessingTime = results.reduce((sum, r) => sum + r.data.meta.total_processing_time_ms, 0) / results.length;
+  const totalDetections = isBatchMode
+    ? state.batchResults!.summary.total_detections
+    : results.reduce((sum, r) => sum + (r as any).data.summary.total_detections, 0);
+
+  const totalStamps = isBatchMode
+    ? state.batchResults!.summary.total_stamps
+    : results.reduce((sum, r) => sum + (r as any).data.summary.total_stamps, 0);
+
+  const totalSignatures = isBatchMode
+    ? state.batchResults!.summary.total_signatures
+    : results.reduce((sum, r) => sum + (r as any).data.summary.total_signatures, 0);
+
+  const totalQRs = isBatchMode
+    ? state.batchResults!.summary.total_qrs
+    : results.reduce((sum, r) => sum + (r as any).data.summary.total_qrs, 0);
+
+  const avgProcessingTime = isBatchMode
+    ? state.batchResults!.meta.total_processing_time_ms / results.length
+    : results.reduce((sum, r) => sum + (r as any).data.meta.total_processing_time_ms, 0) / results.length;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-      <HackathonHeader />
+      {!isMobile && <HackathonHeader />}
       
       <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -131,7 +152,12 @@ export function SolutionPage() {
               Document Details
             </h2>
             <div className="space-y-6">
-              {results.map(({ fileName, fileObject, data }, index) => (
+              {results.map((result: any, index) => {
+                const fileName = isBatchMode ? result.filename : result.fileName;
+                const fileObject = isBatchMode ? null : result.fileObject;
+                const data = isBatchMode ? result : result.data;
+
+                return (
                 <div
                   key={index}
                   className="p-6 rounded-2xl"
@@ -158,15 +184,23 @@ export function SolutionPage() {
                   </div>
 
                   {/* Image Visualization */}
-                  <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <ImageWithDetections
-                      imageFile={fileObject}
-                      stamps={data.stamps}
-                      signatures={data.signatures}
-                      qrs={data.qrs}
-                      imageSize={data.image_size}
-                    />
-                  </div>
+                  {fileObject && (
+                    <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                      <ImageWithDetections
+                        imageFile={fileObject}
+                        stamps={data.stamps}
+                        signatures={data.signatures}
+                        qrs={data.qrs}
+                        imageSize={data.image_size}
+                      />
+                    </div>
+                  )}
+                  {!fileObject && isBatchMode && (
+                    <div className="mb-6 p-4 rounded-xl text-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', color: 'rgba(153, 153, 153, 1)' }}>
+                      <p className="text-sm">Scanned document #{index + 1}</p>
+                      <p className="text-xs mt-2">Image visualization not available in batch mode</p>
+                    </div>
+                  )}
 
                   {/* Detection Summary */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -289,13 +323,14 @@ export function SolutionPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
       </main>
 
-      <HackathonFooter />
+      {!isMobile && <HackathonFooter />}
     </div>
   );
 }

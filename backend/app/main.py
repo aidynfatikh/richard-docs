@@ -8,6 +8,12 @@ import time
 
 from app.model_service import get_detector
 from app.document_processor import get_processor
+import sys
+import os
+# Add document_scan module to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'document_scan'))
+from scan import DocScanner
+import base64
 
 app = FastAPI(
     title="Document Detection API",
@@ -27,11 +33,12 @@ app.add_middleware(
 # Initialize services on startup
 detector = None
 processor = None
+doc_scanner = None
 
 @app.on_event("startup")
 async def startup_event():
     """Load the YOLO model and document processor when the API starts."""
-    global detector, processor
+    global detector, processor, doc_scanner
     try:
         print("Initializing document detector...")
         detector = get_detector(
@@ -42,10 +49,14 @@ async def startup_event():
             group_iou_threshold=0.3  # IoU threshold for grouping
         )
         print("✓ Model loaded successfully")
-        
+
         print("Initializing document processor...")
         processor = get_processor(dpi=200)  # 200 DPI for PDF rendering
         print("✓ Document processor initialized")
+
+        print("Initializing document scanner...")
+        doc_scanner = DocScanner(interactive=False)
+        print("✓ Document scanner initialized")
     except Exception as e:
         print(f"⚠️  Warning: Could not load services: {e}")
         print("API will return errors until services are available")
@@ -194,6 +205,176 @@ async def detect_elements(
             detail=f"Detection failed: {str(e)}"
         )
 
+
+
+@app.post("/scan-document")
+async def scan_document(file: UploadFile = File(...)):
+    """
+    Scan a document image to detect its boundaries and return a perspective-corrected version.
+
+    Args:
+        file: Image file (JPG, PNG, etc.)
+
+    Returns:
+        JSON with transformed image (base64) and corner coordinates
+    """
+    if doc_scanner is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Document scanner not loaded. Please check server logs."
+        )
+
+    # Read file contents
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read file: {str(e)}"
+        )
+
+    # Scan the document
+    try:
+        result = doc_scanner.scan_image_bytes(contents)
+
+        if not result['success']:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get('error', 'Document scanning failed')
+            )
+
+        # Convert transformed image to base64
+        transformed_b64 = base64.b64encode(result['transformed_image']).decode('utf-8')
+
+        return {
+            "success": True,
+            "transformed_image": f"data:image/jpeg;base64,{transformed_b64}",
+            "corners": result['corners']
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document scanning failed: {str(e)}"
+        )
+
+
+@app.post("/batch-detect")
+async def batch_detect(
+    files: List[UploadFile] = File(...),
+    confidence: Optional[float] = 0.25
+):
+    """
+    Detect document elements (stamps, signatures, QR codes) in multiple uploaded images.
+
+    Args:
+        files: List of image files
+        confidence: Confidence threshold (0-1), default 0.25
+
+    Returns:
+        JSON array with detected elements for each image
+    """
+    if detector is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Detector not loaded. Please check server logs."
+        )
+
+    if len(files) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No files provided"
+        )
+
+    if len(files) > 50:  # Limit batch size
+        raise HTTPException(
+            status_code=400,
+            detail="Too many files. Maximum 50 files per batch."
+        )
+
+    # Update detector confidence if provided
+    original_confidence = detector.confidence_threshold
+    if confidence != original_confidence:
+        detector.confidence_threshold = confidence
+
+    try:
+        start_time = time.time()
+        results = []
+
+        for idx, file in enumerate(files):
+            # Read file contents
+            try:
+                contents = await file.read()
+            except Exception as e:
+                results.append({
+                    "file_index": idx,
+                    "filename": file.filename,
+                    "success": False,
+                    "error": f"Failed to read file: {str(e)}"
+                })
+                continue
+
+            # Decode image
+            try:
+                nparr = np.frombuffer(contents, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if img is None:
+                    results.append({
+                        "file_index": idx,
+                        "filename": file.filename,
+                        "success": False,
+                        "error": "Failed to decode image"
+                    })
+                    continue
+
+                # Run detection
+                detection_result = detector.detect(img)
+                detection_result["file_index"] = idx
+                detection_result["filename"] = file.filename
+                detection_result["success"] = True
+                results.append(detection_result)
+
+            except Exception as e:
+                results.append({
+                    "file_index": idx,
+                    "filename": file.filename,
+                    "success": False,
+                    "error": str(e)
+                })
+
+        total_time = (time.time() - start_time) * 1000
+
+        # Restore original confidence
+        detector.confidence_threshold = original_confidence
+
+        # Calculate overall summary
+        successful_results = [r for r in results if r.get("success", False)]
+
+        return {
+            "total_files": len(files),
+            "successful_detections": len(successful_results),
+            "failed_detections": len(files) - len(successful_results),
+            "results": results,
+            "summary": {
+                "total_detections": sum(r["summary"]["total_detections"] for r in successful_results),
+                "total_stamps": sum(r["summary"]["total_stamps"] for r in successful_results),
+                "total_signatures": sum(r["summary"]["total_signatures"] for r in successful_results),
+                "total_qrs": sum(r["summary"]["total_qrs"] for r in successful_results),
+            },
+            "meta": {
+                "total_processing_time_ms": round(total_time, 2),
+                "confidence_threshold": confidence
+            }
+        }
+
+    except Exception as e:
+        # Restore confidence on error
+        detector.confidence_threshold = original_confidence
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch detection failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

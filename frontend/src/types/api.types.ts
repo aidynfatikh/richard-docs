@@ -80,3 +80,32 @@ export interface APIResponse<T> {
   error?: APIError;
   success: boolean;
 }
+
+/**
+ * Document scan response
+ */
+export interface ScanDocumentResponse {
+  success: boolean;
+  transformed_image: string; // base64 data URL
+  corners: [[number, number], [number, number], [number, number], [number, number]]; // 4 corner coordinates
+}
+
+/**
+ * Batch detection response
+ */
+export interface BatchDetectionResponse {
+  total_files: number;
+  successful_detections: number;
+  failed_detections: number;
+  results: Array<DetectionResponse & {
+    file_index: number;
+    filename: string;
+    success: boolean;
+    error?: string;
+  }>;
+  summary: DetectionSummary;
+  meta: {
+    total_processing_time_ms: number;
+    confidence_threshold: number;
+  };
+}
