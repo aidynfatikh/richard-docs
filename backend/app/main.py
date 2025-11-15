@@ -11,18 +11,53 @@ def read_root():
 @app.post("/predict")
 async def predict(request: Request):
     return {
-        "boxes": [
+        "document_id": "doc_mock_001",
+        "pages": [
             {
-                "x1": 50,
-                "y1": 40,
-                "x2": 200,
-                "y2": 300,
-                "confidence": 0.75,
-                "class": "object"
+                "page_number": 1,
+                "size": {
+                    "width_px": 2480,
+                    "height_px": 3508
+                },
+                "stamps": [
+                    {
+                        "id": "stamp_1",
+                        "bbox": [320, 2200, 900, 2800],
+                        "confidence": 0.94,
+                        "type": "round_blue",
+                        "text": "ТОО «Компания»"
+                    }
+                ],
+                "signatures": [
+                    {
+                        "id": "sign_1",
+                        "bbox": [1400, 2300, 2100, 2700],
+                        "confidence": 0.91,
+                        "role": "director",
+                        "is_digital": False
+                    }
+                ],
+                "qrs": [
+                    {
+                        "id": "qr_1",
+                        "bbox": [1800, 200, 2300, 700],
+                        "confidence": 0.97,
+                        "decoded_data": "https://example.com/verify?id=12345",
+                        "version": "QR-Model-v1"
+                    }
+                ]
             }
         ],
-        "model_version": "mock_v1",
-        "latency_ms": 5
+        "summary": {
+            "total_pages": 1,
+            "total_stamps": 1,
+            "total_signatures": 1,
+            "total_qrs": 1
+        },
+        "meta": {
+            "model_version": "doc-detector-v0.1-mock",
+            "inference_time_ms": 23
+        }
     }
 
 if __name__ == "__main__":
