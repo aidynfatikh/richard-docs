@@ -4,4 +4,3 @@ export { HackathonHero } from './HackathonHero';
 export { SolutionOverview } from './SolutionOverview';
 export { TeamSection } from './TeamSection';
 export { ImageWithDetections } from './ImageWithDetections';
-export { IntelligentDocumentProcessor } from './IntelligentDocumentProcessor';
