@@ -178,57 +178,11 @@ class APIService {
         success: result.success,
         hasData: !!result.data,
         isMultiPage: result.data && 'document_type' in result.data,
-        data: result.data
       });
       
-      // Handle multi-page PDF response - convert to single page format
-      if (result.success && result.data && 'document_type' in result.data) {
-        const multiPageData = result.data as MultiPageDetectionResponse;
-        
-        console.log('Multi-page PDF detected:', {
-          totalPages: multiPageData.total_pages,
-          firstPageHasImage: !!multiPageData.pages[0]?.page_image,
-          firstPageImagePrefix: multiPageData.pages[0]?.page_image?.substring(0, 50)
-        });
-        
-        // Aggregate all pages into a single result
-        const allStamps = multiPageData.pages.flatMap(page => page.stamps);
-        const allSignatures = multiPageData.pages.flatMap(page => page.signatures);
-        const allQRs = multiPageData.pages.flatMap(page => page.qrs);
-        
-        // Use the first page's image size (or could use the largest page)
-        const imageSize = multiPageData.pages[0]?.image_size || { width_px: 0, height_px: 0 };
-        
-        // Get the first page's base64 image if available
-        const pageImage = multiPageData.pages[0]?.page_image;
-        
-        const aggregatedResponse: DetectionResponse = {
-          image_size: imageSize,
-          stamps: allStamps,
-          signatures: allSignatures,
-          qrs: allQRs,
-          summary: multiPageData.summary,
-          meta: {
-            model_version: multiPageData.pages[0]?.meta.model_version || 'unknown',
-            total_processing_time_ms: multiPageData.meta.total_processing_time_ms,
-            confidence_threshold: multiPageData.meta.confidence_threshold,
-            is_pdf: true,
-          },
-          ...(pageImage && { page_image: pageImage }) // Include page_image if it exists
-        };
-        
-        console.log('Aggregated response:', {
-          hasPageImage: !!aggregatedResponse.page_image,
-          pageImagePrefix: aggregatedResponse.page_image?.substring(0, 50)
-        });
-        
-        return {
-          success: true,
-          data: aggregatedResponse
-        };
-      }
-      
-      return result as APIResponse<DetectionResponse>;
+      // Keep multi-page PDFs as-is, don't aggregate
+      // The frontend will handle displaying all pages
+      return result as APIResponse<DetectionResponse | MultiPageDetectionResponse>;
     } catch (error) {
       return {
         success: false,

@@ -102,25 +102,50 @@ export function HackathonHero() {
         }
       );
 
-      // Filter successful results
-      const successfulResults: Array<{ fileName: string; fileObject: File | null; data: DetectionResponse }> = [];
+      // Filter successful results and expand multi-page PDFs
+      const successfulResults: Array<{ 
+        fileName: string; 
+        fileObject: File | null; 
+        data: DetectionResponse;
+        pages?: DetectionResponse[]; // For multi-page PDFs
+      }> = [];
       const errors: string[] = [];
 
       responses.forEach(({ file, result }, index) => {
         if (result.success && result.data) {
-          console.log(`Processing result for ${file}:`, {
-            hasPageImage: !!result.data.page_image,
-            pageImagePrefix: result.data.page_image ? result.data.page_image.substring(0, 50) : 'none',
-            isPDF: result.data.meta?.is_pdf
-          });
-          
-          // For PDFs with page_image, set fileObject to null (we'll use base64 image)
-          const fileObject = result.data.page_image ? null : files[index];
-          successfulResults.push({ 
-            fileName: file, 
-            fileObject: fileObject, 
-            data: result.data 
-          });
+          // Check if it's a multi-page PDF
+          if ('document_type' in result.data) {
+            const multiPageData = result.data as any;
+            console.log(`Multi-page PDF detected for ${file}: ${multiPageData.total_pages} pages`);
+            
+            // Calculate aggregate summary for the whole PDF
+            const aggregateSummary = {
+              total_detections: multiPageData.summary.total_detections,
+              total_stamps: multiPageData.summary.total_stamps,
+              total_signatures: multiPageData.summary.total_signatures,
+              total_qrs: multiPageData.summary.total_qrs,
+            };
+            
+            // Store all pages data
+            successfulResults.push({
+              fileName: file,
+              fileObject: null,
+              data: {
+                ...multiPageData.pages[0], // Use first page's structure
+                summary: aggregateSummary,
+                meta: multiPageData.meta
+              },
+              pages: multiPageData.pages // Store all pages
+            });
+          } else {
+            // Single image file
+            console.log(`Processing single image for ${file}`);
+            successfulResults.push({ 
+              fileName: file, 
+              fileObject: files[index], 
+              data: result.data 
+            });
+          }
         } else {
           errors.push(`${file}: ${result.error?.detail || 'Unknown error'}`);
         }
