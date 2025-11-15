@@ -33,7 +33,7 @@ app.add_middleware(
 # Initialize services on startup
 detector = None
 processor = None
-doc_scanner = None
+doc_scanner = DocScanner() 
 
 @app.on_event("startup")
 async def startup_event():
@@ -219,53 +219,52 @@ async def detect_elements(
 @app.post("/scan-document")
 async def scan_document(file: UploadFile = File(...)):
     """
-    Scan a document image to detect its boundaries and return a perspective-corrected version.
-
-    Args:
-        file: Image file (JPG, PNG, etc.)
-
-    Returns:
-        JSON with transformed image (base64) and corner coordinates
+    Scan a document image, detect boundaries, apply perspective transform
+    and return the cleaned B/W scanned version.
     """
+
+    # гарантированная проверка
     if doc_scanner is None:
         raise HTTPException(
             status_code=503,
-            detail="Document scanner not loaded. Please check server logs."
+            detail="Document scanner not loaded"
         )
 
-    # Read file contents
+    # читаем файл
     try:
         contents = await file.read()
+        if not contents:
+            raise ValueError("Empty file")
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail=f"Failed to read file: {str(e)}"
+            detail=f"Failed to read uploaded file: {str(e)}"
         )
 
-    # Scan the document
+    # запускаем OCR-сканер
     try:
         result = doc_scanner.scan_image_bytes(contents)
-
-        if not result['success']:
-            raise HTTPException(
-                status_code=400,
-                detail=result.get('error', 'Document scanning failed')
-            )
-
-        # Convert transformed image to base64
-        transformed_b64 = base64.b64encode(result['transformed_image']).decode('utf-8')
-
-        return {
-            "success": True,
-            "transformed_image": f"data:image/jpeg;base64,{transformed_b64}",
-            "corners": result['corners']
-        }
-
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Document scanning failed: {str(e)}"
+            detail=f"Internal scanning error: {str(e)}"
         )
+
+    # если DocScanner вернул ошибку
+    if not result["success"]:
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Document scanning failed")
+        )
+
+    # конвертация результата в base64
+    transformed_b64 = base64.b64encode(result["transformed_image"]).decode("utf-8")
+
+    return {
+        "success": True,
+        "corners": result["corners"],
+        "transformed_image": f"data:image/jpeg;base64,{transformed_b64}"
+    }
 
 
 @app.post("/batch-detect")

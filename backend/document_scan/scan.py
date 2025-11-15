@@ -93,7 +93,13 @@ class DocScanner(object):
         This is a utility function used by get_contours. The input image is expected 
         to be rescaled and Canny filtered prior to be passed in.
         """
-        lines = lsd(img)
+        lsd_detector = cv2.createLineSegmentDetector(0)
+        det = lsd_detector.detect(img)
+
+        lines = None
+        if det is not None:
+            lines = det[0]
+
 
         # massages the output from LSD
         # LSD operates on edges. One "line" has 2 edges, and so we need to combine the edges back into lines
@@ -112,7 +118,7 @@ class DocScanner(object):
             horizontal_lines_canvas = np.zeros(img.shape, dtype=np.uint8)
             vertical_lines_canvas = np.zeros(img.shape, dtype=np.uint8)
             for line in lines:
-                x1, y1, x2, y2, _ = line
+                x1, y1, x2, y2 = line
                 if abs(x2 - x1) > abs(y2 - y1):
                     (x1, y1), (x2, y2) = sorted(((x1, y1), (x2, y2)), key=lambda pt: pt[0])
                     cv2.line(horizontal_lines_canvas, (max(x1 - 5, 0), y1), (min(x2 + 5, img.shape[1] - 1), y2), 255, 2)
@@ -401,3 +407,4 @@ if __name__ == "__main__":
         im_files = [f for f in os.listdir(im_dir) if get_ext(f) in valid_formats]
         for im in im_files:
             scanner.scan(im_dir + '/' + im)
+
