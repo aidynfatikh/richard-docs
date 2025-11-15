@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api.service';
 import { getCameraConstraints } from '../utils/deviceDetection';
-import type { ScanDocumentResponse, BatchDetectionResponse } from '../types/api.types';
 
 interface ScannedDocument {
   id: string;
@@ -18,8 +17,8 @@ export default function MobileDocumentScanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectionIntervalRef = useRef<number>();
-  const stabilityTimerRef = useRef<number>();
+  const detectionIntervalRef = useRef<number | undefined>(undefined);
+  const stabilityTimerRef = useRef<number | undefined>(undefined);
 
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string>('');
