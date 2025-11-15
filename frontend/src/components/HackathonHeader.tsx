@@ -79,10 +79,10 @@ export function HackathonHeader() {
                 scrolled ? 'text-xl' : 'text-2xl'
               }`} 
                 style={{ color: 'rgba(247, 247, 248, 1)' }}
-                onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(209, 254, 23, 1)'}
+                onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
                 onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
               >
-                SexyAldarKose
+                RichardDocs
               </h1>
             </button>
           </div>
@@ -97,7 +97,7 @@ export function HackathonHeader() {
                 scrolled ? 'px-4 py-2 text-sm' : 'px-6 py-3 text-base'
               }`}
               style={{ color: 'rgba(153, 153, 153, 1)' }}
-              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(209, 254, 23, 1)'}
+              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(153, 153, 153, 1)'}
             >
               Approach
@@ -108,7 +108,7 @@ export function HackathonHeader() {
                 scrolled ? 'px-4 py-2 text-sm' : 'px-6 py-3 text-base'
               }`}
               style={{ color: 'rgba(153, 153, 153, 1)' }}
-              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(209, 254, 23, 1)'}
+              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(153, 153, 153, 1)'}
             >
               Team
@@ -118,15 +118,15 @@ export function HackathonHeader() {
           {/* Desktop CTA */}
           <div className="hidden md:flex">
             <a 
-              href="https://higgsfield.ai/" 
+              href="https://armeta.ai/" 
               target="_blank" 
               rel="noopener noreferrer"
               className={`rounded-lg font-medium transition-all duration-300 hover:brightness-90 cursor-pointer ${
                 scrolled ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
               }`}
-              style={{ backgroundColor: 'rgba(209, 254, 23, 1)', color: 'rgba(9, 13, 14, 1)' }}
+              style={{ backgroundColor: 'rgba(31, 107, 255, 1)', color: 'rgba(255, 255, 255, 1)' }}
             >
-              Higgsfield AI
+              Armeta AI
             </a>
           </div>
             </div>

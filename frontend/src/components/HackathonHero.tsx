@@ -21,7 +21,7 @@ export function HackathonHero() {
     
     // Validate input
     if (!prompt.trim()) {
-      setError('Please describe a scene with Aldar Köse to generate the storyboard');
+      setError('Please provide a document for inspection');
       return;
     }
     
@@ -50,37 +50,37 @@ export function HackathonHero() {
           {/* Badge */}
           <div className="mb-8 animate-in slide-in-from-top duration-700 delay-200">
             <a 
-              href="https://higgsfield.ai/" 
+              href="https://armeta.ai/" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-block px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 hover:brightness-90 cursor-pointer" 
-              style={{ backgroundColor: 'rgba(209, 254, 23, 1)', color: 'rgba(9, 13, 14, 1)' }}
+              style={{ backgroundColor: 'rgba(31, 107, 255, 1)', color: 'rgba(255, 255, 255, 1)' }}
             >
-              Higgsfield AI Hackathon 2025
+              Armeta AI Hackathon 2025
             </a>
           </div>
 
           {/* Main Heading */}
           <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight cursor-pointer transition-colors duration-200" 
-            style={{ color: 'rgba(209, 254, 23, 1)' }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(180, 220, 20, 1)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(209, 254, 23, 1)'}
+            style={{ color: 'rgba(31, 107, 255, 1)' }}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(51, 127, 255, 1)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
           >
             <span className="inline-block">
-              Aldar Köse
+              Digital Inspector
             </span><br />
             <span className="inline-block">
-              Storyboard Generator
+              AI Document Analyzer
             </span>
           </h1>
 
           {/* Subheading */}
           <h2 className="text-2xl md:text-3xl font-semibold mb-12 cursor-pointer transition-colors duration-200" 
             style={{ color: 'rgba(247, 247, 248, 1)' }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(209, 254, 23, 1)'}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
             onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
           >
-            From script to storyboard in seconds
+            Automated detection of signatures, stamps & QR codes
           </h2>
 
           {/* Prompt Input */}
@@ -88,7 +88,7 @@ export function HackathonHero() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center w-full">
               <input 
                 type="text"
-                placeholder="Describe the scene with Aldar Kose"
+                placeholder="Upload construction document for inspection"
                 value={prompt}
                 onChange={handleInputChange}
                 onKeyPress={handleKeyPress}
@@ -104,11 +104,11 @@ export function HackathonHero() {
                 onClick={handleGenerate}
                 className="px-8 py-4 rounded-2xl text-lg font-semibold transition-all duration-200 hover:brightness-90 shadow-lg whitespace-nowrap flex items-center gap-2"
                 style={{ 
-                  backgroundColor: 'rgba(209, 254, 23, 1)', 
-                  color: 'rgba(9, 13, 14, 1)'
+                  backgroundColor: 'rgba(31, 107, 255, 1)', 
+                  color: 'rgba(255, 255, 255, 1)'
                 }}
               >
-                Generate
+                Inspect
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M11.8525 4.21651L11.7221 3.2387C11.6906 3.00226 11.4889 2.82568 11.2504 2.82568C11.0118 2.82568 10.8102 3.00226 10.7786 3.23869L10.6483 4.21651C10.2658 7.0847 8.00939 9.34115 5.14119 9.72358L4.16338 9.85396C3.92694 9.88549 3.75037 10.0872 3.75037 10.3257C3.75037 10.5642 3.92694 10.7659 4.16338 10.7974L5.14119 10.9278C8.00938 11.3102 10.2658 13.5667 10.6483 16.4349L10.7786 17.4127C10.8102 17.6491 11.0118 17.8257 11.2504 17.8257C11.4889 17.8257 11.6906 17.6491 11.7221 17.4127L11.8525 16.4349C12.2349 13.5667 14.4913 11.3102 17.3595 10.9278L18.3374 10.7974C18.5738 10.7659 18.7504 10.5642 18.7504 10.3257C18.7504 10.0872 18.5738 9.88549 18.3374 9.85396L17.3595 9.72358C14.4913 9.34115 12.2349 7.0847 11.8525 4.21651Z" fill="currentColor"></path>
                 </svg>
@@ -128,11 +128,12 @@ export function HackathonHero() {
           {/* Description */}
           <p className="text-base md:text-lg max-w-4xl mx-auto leading-relaxed cursor-pointer transition-colors duration-200" 
             style={{ color: 'rgba(153, 153, 153, 1)' }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(167, 203, 18, 1)'}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(51, 127, 255, 1)'}
             onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(153, 153, 153, 1)'}
           >
-            An intelligent system that automatically generates 6-10 frame storyboards from 
-            short scripts, bringing Aldar Köse's adventures to life with AI-powered visual storytelling.
+            An AI-powered Computer Vision solution built for construction industry compliance. Upload your architectural plans
+            and technical drawings to instantly detect signatures, official stamps, and embedded QR codes — transforming manual
+            document verification into an automated, accurate process.
           </p>
         </div>
       </div>
