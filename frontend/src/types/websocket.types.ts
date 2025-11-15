@@ -5,8 +5,16 @@
 /**
  * Detection result from real-time detector
  */
+export interface DetectionCoordinates {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface RealtimeDetection {
-  bbox: [number, number, number, number]; // [x_min, y_min, x_max, y_max]
+  coordinates: DetectionCoordinates;
+  normalized_coordinates?: DetectionCoordinates;
   confidence: number;
   class: 'stamp' | 'signature' | 'qr';
 }
@@ -47,7 +55,7 @@ export interface WebSocketFrameMessage {
  * Successful detection response from server
  */
 export interface WebSocketDetectionResponse {
-  detections: RealtimeDetection[];
+  coordinates: RealtimeDetection[];
   counts: DetectionCounts;
   image_size: ImageSize;
   inference_time_ms: number;
@@ -78,7 +86,7 @@ export function isWebSocketError(response: WebSocketResponse): response is WebSo
  * Type guard to check if response is a detection result
  */
 export function isWebSocketDetection(response: WebSocketResponse): response is WebSocketDetectionResponse {
-  return 'detections' in response;
+  return 'coordinates' in response;
 }
 
 /**

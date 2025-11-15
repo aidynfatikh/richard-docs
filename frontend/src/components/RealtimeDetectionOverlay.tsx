@@ -3,7 +3,7 @@ import type { RealtimeDetection, DetectionCounts } from '../types/websocket.type
 
 interface RealtimeDetectionOverlayProps {
   videoElement: HTMLVideoElement | null;
-  detections: RealtimeDetection[];
+  coordinates: RealtimeDetection[];
   counts: DetectionCounts;
   imageSize: { width: number; height: number };
   fps?: number;
@@ -19,7 +19,7 @@ const COLORS = {
 
 export function RealtimeDetectionOverlay({
   videoElement,
-  detections,
+  coordinates,
   counts,
   imageSize,
   fps = 0,
@@ -47,16 +47,17 @@ export function RealtimeDetectionOverlay({
     const scaleX = canvas.width / imageSize.width;
     const scaleY = canvas.height / imageSize.height;
 
-    // Draw detections
-    detections.forEach((detection) => {
-      const [x1, y1, x2, y2] = detection.bbox;
+    // Draw coordinates
+    coordinates.forEach((detection) => {
+      const absolute = detection.coordinates;
+      const normalized = detection.normalized_coordinates;
       const color = COLORS[detection.class];
 
-      // Scale coordinates to canvas size
-      const scaledX1 = x1 * scaleX;
-      const scaledY1 = y1 * scaleY;
-      const scaledX2 = x2 * scaleX;
-      const scaledY2 = y2 * scaleY;
+      // Scale coordinates to canvas size (prefer normalized if provided)
+      const scaledX1 = normalized ? normalized.x1 * canvas.width : absolute.x1 * scaleX;
+      const scaledY1 = normalized ? normalized.y1 * canvas.height : absolute.y1 * scaleY;
+      const scaledX2 = normalized ? normalized.x2 * canvas.width : absolute.x2 * scaleX;
+      const scaledY2 = normalized ? normalized.y2 * canvas.height : absolute.y2 * scaleY;
       const width = scaledX2 - scaledX1;
       const height = scaledY2 - scaledY1;
 
@@ -82,7 +83,7 @@ export function RealtimeDetectionOverlay({
       ctx.fillStyle = 'white';
       ctx.fillText(labelText, scaledX1 + 4, scaledY1 - 6);
     });
-  }, [videoElement, detections, imageSize, showConfidence]);
+  }, [videoElement, coordinates, imageSize, showConfidence]);
 
   // Calculate total detections
   const totalDetections = counts.stamp + counts.signature + counts.qr;

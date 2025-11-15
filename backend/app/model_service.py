@@ -448,7 +448,7 @@ class RealTimeDetector:
 
         Returns:
             dict: Lightweight detection results {
-                "detections": [...],
+                "coordinates": [...],
                 "counts": {...},
                 "inference_time_ms": float
             }
@@ -469,8 +469,8 @@ class RealTimeDetector:
             half=False  # Disable FP16 for CPU stability
         )[0]
 
-        # Parse detections into lightweight format
-        detections = []
+        # Parse detections into lightweight format (coordinates only)
+        coordinates = []
         counts = {"stamp": 0, "signature": 0, "qr": 0}
 
         if results.boxes is not None and len(results.boxes) > 0:
@@ -483,18 +483,29 @@ class RealTimeDetector:
                 class_name = self.class_names[cls_id]
 
                 detection = {
-                    "bbox": [x1, y1, x2, y2],  # [x_min, y_min, x_max, y_max]
+                    "coordinates": {
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2
+                    },
+                    "normalized_coordinates": {
+                        "x1": round(x1 / img_width, 6),
+                        "y1": round(y1 / img_height, 6),
+                        "x2": round(x2 / img_width, 6),
+                        "y2": round(y2 / img_height, 6)
+                    },
                     "confidence": round(float(conf), 3),  # Round to 3 decimals
                     "class": class_name
                 }
 
-                detections.append(detection)
+                coordinates.append(detection)
                 counts[class_name] = counts.get(class_name, 0) + 1
 
         inference_time = (time.time() - start_time) * 1000  # Convert to ms
 
         return {
-            "detections": detections,
+            "coordinates": coordinates,
             "counts": counts,
             "image_size": {"width": img_width, "height": img_height},
             "inference_time_ms": round(inference_time, 2)

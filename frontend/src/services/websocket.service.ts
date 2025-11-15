@@ -58,7 +58,7 @@ export class RealtimeDetectionService {
               if (this.onErrorCallback) {
                 this.onErrorCallback(response.message);
               }
-            } else if ('detections' in response) {
+            } else if ('coordinates' in response) {
               // Valid detection response
               if (this.onDetectionCallback) {
                 this.onDetectionCallback(response);

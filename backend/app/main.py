@@ -782,7 +782,7 @@ async def websocket_detect(websocket: WebSocket):
                 if frame_count % 10 == 0:
                     fps = 1000 / avg_inference_time if avg_inference_time > 0 else 0
                     print(f"[WebSocket] Frame {frame_count}: "
-                          f"{len(result['detections'])} detections, "
+                          f"{len(result['coordinates'])} detections, "
                           f"{result['inference_time_ms']:.1f}ms, "
                           f"avg FPS: {fps:.1f}")
 

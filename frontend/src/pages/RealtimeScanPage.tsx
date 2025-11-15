@@ -22,7 +22,7 @@ export function RealtimeScanPage() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
   // Detection state
-  const [detections, setDetections] = useState<RealtimeDetection[]>([]);
+  const [coordinates, setCoordinates] = useState<RealtimeDetection[]>([]);
   const [counts, setCounts] = useState<DetectionCounts>({ stamp: 0, signature: 0, qr: 0 });
   const [imageSize, setImageSize] = useState({ width: 640, height: 480 });
   const [fps, setFps] = useState(0);
@@ -51,7 +51,7 @@ export function RealtimeScanPage() {
 
         wsService.onDetection((result) => {
           if (mounted) {
-            setDetections(result.detections);
+            setCoordinates(result.coordinates);
             setCounts(result.counts);
             setImageSize(result.image_size);
             setLatency(result.inference_time_ms);
@@ -324,7 +324,7 @@ export function RealtimeScanPage() {
       {/* Detection overlay */}
       <RealtimeDetectionOverlay
         videoElement={videoRef.current}
-        detections={detections}
+        coordinates={coordinates}
         counts={counts}
         imageSize={imageSize}
         fps={fps}
