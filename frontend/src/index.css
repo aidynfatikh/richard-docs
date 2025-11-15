@@ -17,3 +17,27 @@ button, input, textarea, select {
   font-family: 'Inter', sans-serif;
   font-weight: 500;
 }
+
+/* Dark scrollbar for all elements */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(50, 50, 50, 1) rgba(20, 20, 20, 1);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(20, 20, 20, 1);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(50, 50, 50, 1);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(70, 70, 70, 1);
+}
