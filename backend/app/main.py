@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 import uvicorn
-from typing import Optional
+from typing import Optional, List
 import time
 
 from app.model_service import get_detector
+from app.document_processor import get_processor
 
 app = FastAPI(
     title="Document Detection API",
@@ -23,13 +24,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize model on startup
+# Initialize services on startup
 detector = None
+processor = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Load the YOLO model when the API starts."""
-    global detector
+    """Load the YOLO model and document processor when the API starts."""
+    global detector, processor
     try:
         print("Initializing document detector...")
         detector = get_detector(
@@ -40,9 +42,13 @@ async def startup_event():
             group_iou_threshold=0.3  # IoU threshold for grouping
         )
         print("✓ Model loaded successfully")
+        
+        print("Initializing document processor...")
+        processor = get_processor(dpi=200)  # 200 DPI for PDF rendering
+        print("✓ Document processor initialized")
     except Exception as e:
-        print(f"⚠️  Warning: Could not load model: {e}")
-        print("API will return errors until model is available")
+        print(f"⚠️  Warning: Could not load services: {e}")
+        print("API will return errors until services are available")
 
 
 @app.get("/")
@@ -79,36 +85,53 @@ async def detect_elements(
     confidence: Optional[float] = 0.25
 ):
     """
-    Detect document elements (stamps, signatures, QR codes) in an uploaded image.
+    Detect document elements (stamps, signatures, QR codes) in an uploaded document.
+    Supports images (JPG, PNG, WEBP, TIFF, BMP) and PDFs (multi-page).
     
     Args:
-        file: Image file (JPG, PNG, etc.)
+        file: Document file (image or PDF)
         confidence: Confidence threshold (0-1), default 0.25
     
     Returns:
-        JSON with detected elements and their bounding boxes
+        JSON with detected elements and their bounding boxes.
+        For PDFs with multiple pages, returns array of results per page.
     """
-    if detector is None:
+    if detector is None or processor is None:
         raise HTTPException(
             status_code=503,
-            detail="Model not loaded. Please check server logs."
+            detail="Services not loaded. Please check server logs."
         )
     
-    # Read and decode image
+    # Read file contents
     try:
         contents = await file.read()
-        arr = np.frombuffer(contents, np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        
-        if img is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid image file. Please upload a valid image."
-            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail=f"Failed to read image: {str(e)}"
+            detail=f"Failed to read file: {str(e)}"
+        )
+    
+    # Check if format is supported
+    format_info = processor.get_format_info(file.filename or "document")
+    if not format_info['is_supported']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: {format_info['extension']}. "
+                   f"Supported: JPG, PNG, WEBP, TIFF, BMP, PDF"
+        )
+    
+    # Process document (handles both images and PDFs)
+    try:
+        pages = processor.process_file(contents, file.filename or "document")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process document: {str(e)}"
         )
     
     # Update detector confidence if provided
@@ -116,22 +139,56 @@ async def detect_elements(
     if confidence != original_confidence:
         detector.confidence_threshold = confidence
     
-    # Run detection
+    # Run detection on all pages
     try:
         start_time = time.time()
-        result = detector.detect(img)
-        total_time = (time.time() - start_time) * 1000
+        results = []
         
-        # Add request metadata
-        result["meta"]["total_processing_time_ms"] = round(total_time, 2)
-        result["meta"]["confidence_threshold"] = confidence
+        for img, page_num in pages:
+            page_start = time.time()
+            
+            # Run detection
+            result = detector.detect(img)
+            
+            # Add page-specific metadata
+            result["meta"]["page_number"] = page_num
+            result["meta"]["page_processing_time_ms"] = round((time.time() - page_start) * 1000, 2)
+            
+            results.append(result)
+        
+        total_time = (time.time() - start_time) * 1000
         
         # Restore original confidence
         detector.confidence_threshold = original_confidence
         
-        return result
+        # Return single result for images, array for multi-page PDFs
+        if len(results) == 1:
+            results[0]["meta"]["total_processing_time_ms"] = round(total_time, 2)
+            results[0]["meta"]["confidence_threshold"] = confidence
+            results[0]["meta"]["is_pdf"] = format_info['is_pdf']
+            return results[0]
+        else:
+            # Multi-page PDF
+            return {
+                "document_type": "pdf",
+                "total_pages": len(results),
+                "pages": results,
+                "summary": {
+                    "total_detections": sum(r["summary"]["total_detections"] for r in results),
+                    "total_stamps": sum(r["summary"]["total_stamps"] for r in results),
+                    "total_signatures": sum(r["summary"]["total_signatures"] for r in results),
+                    "total_qrs": sum(r["summary"]["total_qrs"] for r in results),
+                },
+                "meta": {
+                    "total_processing_time_ms": round(total_time, 2),
+                    "confidence_threshold": confidence,
+                    "is_pdf": True
+                }
+            }
         
     except Exception as e:
+        # Restore confidence on error
+        detector.confidence_threshold = original_confidence
         raise HTTPException(
             status_code=500,
             detail=f"Detection failed: {str(e)}"
