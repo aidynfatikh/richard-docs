@@ -134,3 +134,117 @@ export interface BatchDetectionResponse {
     confidence_threshold: number;
   };
 }
+
+/**
+ * Document classification indicators from EXIF
+ */
+export interface ExifIndicators {
+  has_exif?: boolean;
+  make?: string;
+  model?: string;
+  software?: string;
+  is_phone_camera?: boolean;
+  is_phone_model?: boolean;
+  is_digital_software?: boolean;
+  has_iso?: boolean;
+  has_aperture?: boolean;
+  has_focal_length?: boolean;
+  has_exposure_time?: boolean;
+  has_gps?: boolean;
+  has_orientation?: boolean;
+  has_datetime_original?: boolean;
+  phone_aspect_ratio?: boolean;
+  iso?: number;
+  exif_error?: string;
+}
+
+/**
+ * Document classification indicators from visual analysis
+ */
+export interface VisualIndicators {
+  document_contour?: boolean;
+  contour_area_ratio?: number;
+  document_within_frame?: boolean;
+  document_fills_frame?: boolean;
+  edges_touch_boundaries?: boolean;
+  edges_have_margin?: boolean;
+  perspective_distortion?: boolean;
+  visible_background?: boolean;
+  blur_variance?: number;
+  has_focus_variation?: boolean;
+  non_uniform_lighting?: boolean;
+  visual_error?: string;
+}
+
+/**
+ * Document classification result
+ */
+export interface ClassificationResult {
+  classification: 'camera_photo' | 'digital_document';
+  confidence: number;
+  scores: {
+    exif: number;
+    visual: number;
+    final: number;
+  };
+  indicators: {
+    exif: ExifIndicators;
+    visual: VisualIndicators;
+  };
+  recommendation: 'apply_perspective_correction' | 'use_as_is';
+  threshold?: number;
+  reason?: string;
+  error?: string;
+}
+
+/**
+ * Scan metadata from DocScanner
+ */
+export interface ScanMetadata {
+  applied: boolean;
+  scan_success?: boolean;
+  corners_detected?: [[number, number], [number, number], [number, number], [number, number]];
+  error?: string;
+  fallback_to_original?: boolean;
+  reason?: string;
+}
+
+/**
+ * Processing metadata for intelligent document processing
+ */
+export interface ProcessingMetadata {
+  filename?: string;
+  file_size_bytes?: number;
+  format?: string;
+  classification?: ClassificationResult;
+  scan_reason?: string;
+  scan?: ScanMetadata;
+}
+
+/**
+ * Intelligent document processing response
+ * Extends DetectionResponse with classification and processing metadata
+ */
+export interface ProcessDocumentResponse extends DetectionResponse {
+  processing: ProcessingMetadata;
+}
+
+/**
+ * Multi-page intelligent processing response
+ */
+export interface MultiPageProcessDocumentResponse extends MultiPageDetectionResponse {
+  processing: ProcessingMetadata;
+}
+
+/**
+ * Classification-only response
+ */
+export interface ClassifyDocumentResponse {
+  filename?: string;
+  file_size_bytes?: number;
+  is_camera_photo: boolean;
+  classification: 'camera_photo' | 'digital_document';
+  confidence: number;
+  recommendation: 'apply_perspective_correction' | 'use_as_is';
+  details: ClassificationResult;
+}

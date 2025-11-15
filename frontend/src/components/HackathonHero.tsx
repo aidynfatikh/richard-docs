@@ -93,14 +93,25 @@ export function HackathonHero() {
     setProgress({ current: 0, total: files.length });
 
     try {
-      // Process files with progress tracking
-      const responses = await apiService.detectMultipleDocuments(
-        files,
-        0.25, // confidence threshold
-        (current, total) => {
-          setProgress({ current, total });
+      // Process files with progress tracking using intelligent endpoint
+      const processPromises = files.map(async (file, index) => {
+        setProgress({ current: index + 1, total: files.length });
+
+        // Use new intelligent processing endpoint
+        const result = await apiService.processDocument(file, 0.25);
+
+        // Small delay between requests
+        if (index < files.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
-      );
+
+        return {
+          file: file.name,
+          result
+        };
+      });
+
+      const responses = await Promise.all(processPromises);
 
       // Filter successful results and expand multi-page PDFs
       const successfulResults: Array<{ 

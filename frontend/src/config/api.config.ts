@@ -10,6 +10,8 @@ export const API_CONFIG = {
   // API endpoints
   ENDPOINTS: {
     DETECT: '/detect',
+    PROCESS_DOCUMENT: '/process-document', // NEW: Intelligent processing with auto-classification
+    CLASSIFY_DOCUMENT: '/classify-document', // NEW: Classification only
     HEALTH: '/health',
     SCAN_DOCUMENT: '/scan-document',
     BATCH_DETECT: '/batch-detect',

@@ -8,6 +8,7 @@ import time
 
 from app.model_service import get_detector
 from app.document_processor import get_processor
+from app.document_classifier import is_document_photo
 import sys
 import os
 # Add document_scan module to path
@@ -265,6 +266,277 @@ async def scan_document(file: UploadFile = File(...)):
         "corners": result["corners"],
         "transformed_image": f"data:image/jpeg;base64,{transformed_b64}"
     }
+
+
+@app.post("/process-document")
+async def process_document(
+    file: UploadFile = File(...),
+    confidence: Optional[float] = 0.25,
+    force_scan: Optional[bool] = False,
+    skip_scan: Optional[bool] = False
+):
+    """
+    Intelligent document processing endpoint.
+    Automatically classifies upload as camera photo vs digital document,
+    then applies appropriate processing pipeline.
+
+    Workflow:
+    1. Classify document (camera photo or digital document)
+    2. If camera photo → apply perspective correction (DocScanner)
+    3. If digital document → use as-is
+    4. Run object detection (stamps, signatures, QR codes)
+    5. Return results with classification metadata
+
+    Args:
+        file: Uploaded document file (image or PDF)
+        confidence: Detection confidence threshold (0-1), default 0.25
+        force_scan: Force perspective correction even if classified as digital
+        skip_scan: Skip perspective correction even if classified as camera photo
+
+    Returns:
+        JSON with:
+        - classification: camera_photo or digital_document
+        - scan_applied: whether perspective correction was applied
+        - detections: stamps, signatures, QR codes
+        - metadata: processing details
+    """
+    if detector is None or processor is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Services not loaded. Please check server logs."
+        )
+
+    # Read file contents
+    try:
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read file: {str(e)}"
+        )
+
+    # Check if format is supported
+    format_info = processor.get_format_info(file.filename or "document")
+    if not format_info['is_supported']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: {format_info['extension']}. "
+                   f"Supported: JPG, PNG, WEBP, TIFF, BMP, PDF"
+        )
+
+    start_time = time.time()
+    processing_metadata = {
+        'filename': file.filename,
+        'file_size_bytes': len(contents),
+        'format': format_info['extension']
+    }
+
+    # Step 1: Classify document (only for images, not PDFs)
+    classification_result = None
+    should_scan = False
+
+    if not format_info['is_pdf']:
+        print(f"\n[Classifier] Analyzing document type for {file.filename}...")
+        is_camera_photo, classification_info = is_document_photo(contents)
+
+        classification_result = classification_info
+        processing_metadata['classification'] = classification_info
+
+        # Decision logic
+        if force_scan:
+            should_scan = True
+            processing_metadata['scan_reason'] = 'force_scan_flag'
+        elif skip_scan:
+            should_scan = False
+            processing_metadata['scan_reason'] = 'skip_scan_flag'
+        else:
+            should_scan = is_camera_photo
+            processing_metadata['scan_reason'] = f"classifier_decision_{classification_info['classification']}"
+
+        print(f"[Classifier] Result: {classification_info['classification']} "
+              f"(confidence: {classification_info['confidence']:.2f})")
+        print(f"[Classifier] Decision: {'APPLY' if should_scan else 'SKIP'} perspective correction")
+    else:
+        # PDFs are never scanned (they're digital by definition)
+        processing_metadata['classification'] = {
+            'classification': 'digital_document',
+            'confidence': 1.0,
+            'reason': 'pdf_format'
+        }
+        should_scan = False if not force_scan else True
+        processing_metadata['scan_reason'] = 'pdf_never_scanned' if not force_scan else 'force_scan_override'
+
+    # Step 2: Apply perspective correction if needed
+    processed_contents = contents
+    scan_metadata = None
+
+    if should_scan and doc_scanner is not None:
+        print(f"[Scanner] Applying perspective correction...")
+        try:
+            scan_result = doc_scanner.scan_image_bytes(contents)
+
+            if scan_result['success']:
+                # Use scanned image for detection
+                processed_contents = scan_result['transformed_image']
+                scan_metadata = {
+                    'applied': True,
+                    'corners_detected': scan_result.get('corners'),
+                    'scan_success': True
+                }
+                print(f"[Scanner] ✓ Perspective correction applied successfully")
+            else:
+                # Scan failed, fall back to original
+                print(f"[Scanner] ⚠ Scan failed: {scan_result.get('error', 'Unknown error')}")
+                print(f"[Scanner] Falling back to original image")
+                scan_metadata = {
+                    'applied': False,
+                    'error': scan_result.get('error'),
+                    'scan_success': False,
+                    'fallback_to_original': True
+                }
+        except Exception as e:
+            print(f"[Scanner] ⚠ Exception during scanning: {str(e)}")
+            scan_metadata = {
+                'applied': False,
+                'error': str(e),
+                'scan_success': False,
+                'fallback_to_original': True
+            }
+    else:
+        scan_metadata = {
+            'applied': False,
+            'reason': 'not_camera_photo' if not should_scan else 'scanner_not_loaded'
+        }
+
+    processing_metadata['scan'] = scan_metadata
+
+    # Step 3: Process document (handles both images and PDFs)
+    try:
+        pages = processor.process_file(processed_contents, file.filename or "document")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process document: {str(e)}"
+        )
+
+    # Step 4: Run detection on all pages
+    original_confidence = detector.confidence_threshold
+    if confidence != original_confidence:
+        detector.confidence_threshold = confidence
+
+    try:
+        results = []
+
+        for img, page_num, base64_img in pages:
+            page_start = time.time()
+
+            # Run detection
+            result = detector.detect(img)
+
+            # Add page-specific metadata
+            result["meta"]["page_number"] = page_num
+            result["meta"]["page_processing_time_ms"] = round((time.time() - page_start) * 1000, 2)
+
+            # Add base64 image if available (for PDFs)
+            if base64_img:
+                result["page_image"] = base64_img
+
+            results.append(result)
+
+        total_time = (time.time() - start_time) * 1000
+
+        # Restore original confidence
+        detector.confidence_threshold = original_confidence
+
+        # Step 5: Build comprehensive response
+        if len(results) == 1:
+            # Single page/image
+            response = results[0]
+            response["meta"]["total_processing_time_ms"] = round(total_time, 2)
+            response["meta"]["confidence_threshold"] = confidence
+            response["meta"]["is_pdf"] = format_info['is_pdf']
+            response["processing"] = processing_metadata
+            return response
+        else:
+            # Multi-page PDF
+            return {
+                "document_type": "pdf",
+                "total_pages": len(results),
+                "pages": results,
+                "summary": {
+                    "total_detections": sum(r["summary"]["total_detections"] for r in results),
+                    "total_stamps": sum(r["summary"]["total_stamps"] for r in results),
+                    "total_signatures": sum(r["summary"]["total_signatures"] for r in results),
+                    "total_qrs": sum(r["summary"]["total_qrs"] for r in results),
+                },
+                "meta": {
+                    "total_processing_time_ms": round(total_time, 2),
+                    "confidence_threshold": confidence,
+                    "is_pdf": True
+                },
+                "processing": processing_metadata
+            }
+
+    except Exception as e:
+        # Restore confidence on error
+        detector.confidence_threshold = original_confidence
+        raise HTTPException(
+            status_code=500,
+            detail=f"Detection failed: {str(e)}"
+        )
+
+
+@app.post("/classify-document")
+async def classify_document(file: UploadFile = File(...)):
+    """
+    Classify document as camera photo vs digital document.
+    Returns classification with detailed metadata - no processing applied.
+
+    This endpoint is useful for:
+    - Testing the classifier
+    - Getting classification confidence before processing
+    - Debugging classification decisions
+
+    Args:
+        file: Image file to classify
+
+    Returns:
+        JSON with classification result and detailed indicators
+    """
+    # Read file
+    try:
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read file: {str(e)}"
+        )
+
+    # Classify
+    try:
+        is_camera_photo, classification_info = is_document_photo(contents)
+
+        return {
+            "filename": file.filename,
+            "file_size_bytes": len(contents),
+            "is_camera_photo": is_camera_photo,
+            "classification": classification_info['classification'],
+            "confidence": classification_info['confidence'],
+            "recommendation": classification_info['recommendation'],
+            "details": classification_info
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Classification failed: {str(e)}"
+        )
 
 
 @app.post("/batch-detect")

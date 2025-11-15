@@ -331,6 +331,21 @@ class DocScanner(object):
                 'success': bool (whether document was detected)
             }
         """
+        from PIL import Image
+        import io
+
+        MAX_WIDTH = 2000
+        MAX_HEIGHT = 2000
+
+        # Decode with PIL (safe for large images)
+        pil_image = Image.open(io.BytesIO(image_bytes))
+
+        # Reduce size if needed
+        pil_image.thumbnail((MAX_WIDTH, MAX_HEIGHT))
+
+        # Convert to OpenCV
+        image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
         RESCALED_HEIGHT = 500.0
 
         # Decode image from bytes

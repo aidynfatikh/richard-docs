@@ -13,6 +13,9 @@ import type {
   APIError,
   ScanDocumentResponse,
   BatchDetectionResponse,
+  ProcessDocumentResponse,
+  MultiPageProcessDocumentResponse,
+  ClassifyDocumentResponse,
 } from '../types/api.types';
 
 /**
@@ -293,6 +296,103 @@ class APIService {
         success: false,
         error: {
           detail: error instanceof Error ? error.message : 'Batch detection request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * Intelligent document processing - auto-classifies and applies appropriate pipeline
+   * @param file - Image file to process
+   * @param confidence - Optional confidence threshold (0-1)
+   * @param forceScan - Force perspective correction even if classified as digital
+   * @param skipScan - Skip perspective correction even if classified as camera photo
+   */
+  async processDocument(
+    file: File,
+    confidence?: number,
+    forceScan?: boolean,
+    skipScan?: boolean
+  ): Promise<APIResponse<ProcessDocumentResponse | MultiPageProcessDocumentResponse>> {
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Build URL with query parameters - use FormData approach like detectDocumentElements
+      let urlString = this.getURL(API_CONFIG.ENDPOINTS.PROCESS_DOCUMENT);
+
+      const params = new URLSearchParams();
+      if (confidence !== undefined) {
+        params.append('confidence', confidence.toString());
+      }
+      if (forceScan !== undefined) {
+        params.append('force_scan', forceScan.toString());
+      }
+      if (skipScan !== undefined) {
+        params.append('skip_scan', skipScan.toString());
+      }
+
+      if (params.toString()) {
+        urlString += '?' + params.toString();
+      }
+
+      const response = await fetchWithTimeout(urlString, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      const result = await handleResponse<ProcessDocumentResponse | MultiPageProcessDocumentResponse>(response);
+
+      console.log('Process Document Response:', {
+        success: result.success,
+        hasData: !!result.data,
+        isMultiPage: result.data && 'document_type' in result.data,
+        classification: result.data && 'processing' in result.data ? result.data.processing.classification : null,
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Process document request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * Classify document (camera photo vs digital document) without processing
+   * @param file - Image file to classify
+   */
+  async classifyDocument(
+    file: File
+  ): Promise<APIResponse<ClassifyDocumentResponse>> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetchWithTimeout(
+        this.getURL(API_CONFIG.ENDPOINTS.CLASSIFY_DOCUMENT),
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+          },
+        }
+      );
+
+      return handleResponse<ClassifyDocumentResponse>(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Classify document request failed',
         },
       };
     }

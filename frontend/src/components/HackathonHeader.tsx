@@ -135,10 +135,10 @@ export function HackathonHeader() {
             gap: window.innerWidth >= 768 && scrolled ? '0.25rem' : '0.5rem',
             transition: 'gap 300ms'
           }}>
-            <button 
+            <button
               onClick={() => handleNavigation('approach')}
               className="font-medium rounded-lg cursor-pointer"
-              style={{ 
+              style={{
                 color: 'rgba(153, 153, 153, 1)',
                 padding: window.innerWidth >= 768 && scrolled ? '0.5rem 1rem' : '0.75rem 1.5rem',
                 fontSize: window.innerWidth >= 768 && scrolled ? '0.875rem' : '1rem',
@@ -149,10 +149,10 @@ export function HackathonHeader() {
             >
               Approach
             </button>
-            <button 
+            <button
               onClick={() => handleNavigation('team')}
               className="font-medium rounded-lg cursor-pointer"
-              style={{ 
+              style={{
                 color: 'rgba(153, 153, 153, 1)',
                 padding: window.innerWidth >= 768 && scrolled ? '0.5rem 1rem' : '0.75rem 1.5rem',
                 fontSize: window.innerWidth >= 768 && scrolled ? '0.875rem' : '1rem',
@@ -247,11 +247,11 @@ export function HackathonHeader() {
               >
                 Team
               </button>
-              <a 
-                href="https://armeta.ai/" 
-                target="_blank" 
+              <a
+                href="https://armeta.ai/"
+                target="_blank"
                 rel="noopener noreferrer"
-                className="block px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 hover:brightness-95 cursor-pointer" 
+                className="block px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 hover:brightness-95 cursor-pointer"
                 style={{ backgroundColor: 'rgba(0, 23, 255, 1)', color: 'rgba(255, 255, 255, 1)' }}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
