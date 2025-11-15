@@ -49,7 +49,7 @@ export function detectDevice(): DeviceInfo {
 export function supportsCameraAccess(): boolean {
   return !!(
     navigator.mediaDevices &&
-    navigator.mediaDevices.getUserMedia &&
+    typeof navigator.mediaDevices.getUserMedia === 'function' &&
     window.MediaStreamTrack
   );
 }
