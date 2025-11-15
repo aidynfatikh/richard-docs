@@ -1,10 +1,10 @@
 export function HackathonFooter() {
   return (
-    <footer className="py-6 sm:py-8 lg:py-10 animate-in fade-in duration-800" style={{ backgroundColor: 'rgba(31, 107, 255, 1)' }}>
+    <footer className="py-6 sm:py-8 lg:py-10" style={{ backgroundColor: 'rgba(0, 23, 255, 1)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
           {/* Brand */}
-          <div className="animate-in slide-in-from-bottom duration-800 delay-200">
+          <div>
             <h3 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 cursor-pointer" style={{ color: 'rgba(255, 255, 255, 1)' }}>
               Team <span style={{ color: 'rgba(255, 255, 255, 1)' }}>Richards</span>
             </h3>
@@ -14,7 +14,7 @@ export function HackathonFooter() {
           </div>
 
           {/* Project Info */}
-          <div className="animate-in slide-in-from-bottom duration-800 delay-400">
+          <div>
             <h4 className="text-base sm:text-lg mb-3 sm:mb-4 transition-colors duration-200 cursor-pointer" 
               style={{ color: 'rgba(200, 220, 255, 1)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 1)'}
@@ -55,7 +55,7 @@ export function HackathonFooter() {
           </div>
 
           {/* Event Info */}
-          <div className="animate-in slide-in-from-bottom duration-800 delay-600">
+          <div>
             <h4 className="text-base sm:text-lg mb-3 sm:mb-4 transition-colors duration-200 cursor-pointer" 
               style={{ color: 'rgba(200, 220, 255, 1)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 1)'}

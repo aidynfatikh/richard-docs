@@ -60,7 +60,7 @@ export function HackathonHeader() {
             <header 
               className="backdrop-blur-md"
               style={{ 
-                padding: '1rem 1.5rem',
+                padding: window.innerWidth >= 768 && scrolled ? '0.5rem 1.5rem' : '1rem 1.5rem',
                 backgroundColor: 'rgba(0, 0, 0, 0.7)',
                 borderRadius: window.innerWidth >= 768 && scrolled ? '9999px' : '0',
                 boxShadow: window.innerWidth >= 768 && scrolled ? '0 10px 15px -3px rgb(0 0 0 / 0.1)' : 'none',
@@ -88,7 +88,7 @@ export function HackathonHeader() {
                   fontSize: window.innerWidth >= 768 && scrolled ? '1.25rem' : '1.5rem',
                   transition: 'font-size 300ms'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
+                onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
                 onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
               >
                 RichardDocs
@@ -110,7 +110,7 @@ export function HackathonHeader() {
                 fontSize: window.innerWidth >= 768 && scrolled ? '0.875rem' : '1rem',
                 transition: 'all 300ms'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
+              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(153, 153, 153, 1)'}
             >
               Approach
@@ -124,7 +124,7 @@ export function HackathonHeader() {
                 fontSize: window.innerWidth >= 768 && scrolled ? '0.875rem' : '1rem',
                 transition: 'all 300ms'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(31, 107, 255, 1)'}
+              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(153, 153, 153, 1)'}
             >
               Team
@@ -139,7 +139,7 @@ export function HackathonHeader() {
               rel="noopener noreferrer"
               className="rounded-lg font-semibold hover:brightness-90 cursor-pointer"
               style={{ 
-                backgroundColor: 'rgba(31, 107, 255, 1)', 
+                backgroundColor: 'rgba(0, 23, 255, 1)', 
                 color: 'rgba(255, 255, 255, 1)',
                 padding: window.innerWidth >= 768 && scrolled ? '0.625rem 1.25rem' : '0.75rem 1.5rem',
                 fontSize: window.innerWidth >= 768 && scrolled ? '0.875rem' : '1rem',
@@ -218,7 +218,7 @@ export function HackathonHeader() {
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="block px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 hover:brightness-95 cursor-pointer" 
-                style={{ backgroundColor: 'rgba(31, 107, 255, 1)', color: 'rgba(255, 255, 255, 1)' }}
+                style={{ backgroundColor: 'rgba(0, 23, 255, 1)', color: 'rgba(255, 255, 255, 1)' }}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 Armeta AI
