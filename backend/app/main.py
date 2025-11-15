@@ -1,12 +1,13 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 import uvicorn
 from typing import Optional, List
 import time
+import json
 
-from app.model_service import get_detector
+from app.model_service import get_detector, get_realtime_detector
 from app.document_processor import get_processor
 from app.document_classifier import is_document_photo
 import sys
@@ -33,13 +34,14 @@ app.add_middleware(
 
 # Initialize services on startup
 detector = None
+realtime_detector = None
 processor = None
-doc_scanner = DocScanner() 
+doc_scanner = DocScanner()
 
 @app.on_event("startup")
 async def startup_event():
     """Load the YOLO model and document processor when the API starts."""
-    global detector, processor, doc_scanner
+    global detector, realtime_detector, processor, doc_scanner
     try:
         print("Initializing document detector...")
         detector = get_detector(
@@ -50,6 +52,16 @@ async def startup_event():
             group_iou_threshold=0.3  # IoU threshold for grouping
         )
         print("✓ Model loaded successfully")
+
+        print("Initializing real-time detector...")
+        realtime_detector = get_realtime_detector(
+            model_path=None,  # Uses same model as detector
+            confidence_threshold=0.25,
+            device='cpu',  # Change to 'cuda' or '0' if GPU available
+            image_size=416,  # Smaller size for speed
+            iou_threshold=0.40  # Lower NMS threshold for speed
+        )
+        print("✓ Real-time detector loaded successfully")
 
         print("Initializing document processor...")
         processor = get_processor(dpi=200)  # 200 DPI for PDF rendering
@@ -666,6 +678,138 @@ async def batch_detect(
             status_code=500,
             detail=f"Batch detection failed: {str(e)}"
         )
+
+
+@app.websocket("/ws/detect")
+async def websocket_detect(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time video stream detection.
+
+    Protocol:
+    - Client sends: Base64-encoded JPEG frames
+    - Server responds: JSON with detections, counts, and performance metrics
+
+    Message Format:
+    Client -> Server: {"frame": "base64_encoded_jpeg_string"}
+    Server -> Client: {
+        "detections": [...],
+        "counts": {"stamp": 0, "signature": 0, "qr": 0},
+        "image_size": {"width": 640, "height": 480},
+        "inference_time_ms": 123.45
+    }
+    """
+    await websocket.accept()
+    print("[WebSocket] Client connected")
+
+    if realtime_detector is None:
+        await websocket.send_json({
+            "error": "Real-time detector not initialized",
+            "message": "Server is still starting up. Please wait and reconnect."
+        })
+        await websocket.close()
+        return
+
+    frame_count = 0
+    total_inference_time = 0
+
+    try:
+        while True:
+            # Receive frame from client
+            try:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                await websocket.send_json({
+                    "error": "Invalid JSON format",
+                    "message": "Expected JSON with 'frame' field containing base64 image"
+                })
+                continue
+
+            if "frame" not in message:
+                await websocket.send_json({
+                    "error": "Missing 'frame' field",
+                    "message": "Message must contain 'frame' field with base64-encoded image"
+                })
+                continue
+
+            # Decode base64 frame
+            try:
+                # Handle data URL format (data:image/jpeg;base64,...)
+                frame_data = message["frame"]
+                if "base64," in frame_data:
+                    frame_data = frame_data.split("base64,")[1]
+
+                # Decode base64 to bytes
+                img_bytes = base64.b64decode(frame_data)
+
+                # Convert to numpy array
+                nparr = np.frombuffer(img_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if frame is None:
+                    await websocket.send_json({
+                        "error": "Failed to decode image",
+                        "message": "Could not decode base64 data as image"
+                    })
+                    continue
+
+            except Exception as e:
+                await websocket.send_json({
+                    "error": "Image decoding error",
+                    "message": str(e)
+                })
+                continue
+
+            # Run detection on frame
+            try:
+                result = realtime_detector.detect_frame(frame)
+
+                # Track performance metrics
+                frame_count += 1
+                total_inference_time += result["inference_time_ms"]
+                avg_inference_time = total_inference_time / frame_count
+
+                # Add performance metrics to response
+                result["meta"] = {
+                    "frame_count": frame_count,
+                    "avg_inference_time_ms": round(avg_inference_time, 2)
+                }
+
+                # Send results back to client
+                await websocket.send_json(result)
+
+                # Log every 10 frames for monitoring
+                if frame_count % 10 == 0:
+                    fps = 1000 / avg_inference_time if avg_inference_time > 0 else 0
+                    print(f"[WebSocket] Frame {frame_count}: "
+                          f"{len(result['detections'])} detections, "
+                          f"{result['inference_time_ms']:.1f}ms, "
+                          f"avg FPS: {fps:.1f}")
+
+            except Exception as e:
+                print(f"[WebSocket] Detection error: {e}")
+                await websocket.send_json({
+                    "error": "Detection failed",
+                    "message": str(e)
+                })
+                continue
+
+    except WebSocketDisconnect:
+        print(f"[WebSocket] Client disconnected. Total frames processed: {frame_count}")
+    except Exception as e:
+        print(f"[WebSocket] Unexpected error: {e}")
+        try:
+            await websocket.send_json({
+                "error": "Server error",
+                "message": str(e)
+            })
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 if __name__ == "__main__":

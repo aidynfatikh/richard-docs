@@ -347,19 +347,19 @@ def get_detector(model_path=None, confidence_threshold=0.25, device='cpu',
                 enable_grouping=True, group_iou_threshold=0.3):
     """
     Get or create detector instance (singleton).
-    
+
     Args:
         model_path: Path to model weights
         confidence_threshold: Detection threshold
         device: Device to run on
         enable_grouping: Enable signature grouping
         group_iou_threshold: IoU threshold for grouping
-    
+
     Returns:
         DocumentDetector instance
     """
     global _detector_instance
-    
+
     if _detector_instance is None:
         _detector_instance = DocumentDetector(
             model_path=model_path,
@@ -368,5 +368,167 @@ def get_detector(model_path=None, confidence_threshold=0.25, device='cpu',
             enable_grouping=enable_grouping,
             group_iou_threshold=group_iou_threshold
         )
-    
+
     return _detector_instance
+
+
+class RealTimeDetector:
+    """
+    Optimized detector for real-time video stream detection.
+    Designed for 5-10 FPS performance on CPU with reduced latency.
+
+    Optimizations:
+    - Smaller input size (416px vs 640px)
+    - Disabled signature grouping
+    - Lightweight response format
+    - Lower NMS threshold
+    """
+
+    def __init__(self, model_path=None, confidence_threshold=0.25, device='cpu',
+                 image_size=416, iou_threshold=0.40):
+        """
+        Initialize real-time detector.
+
+        Args:
+            model_path: Path to YOLO weights. If None, uses default path.
+            confidence_threshold: Minimum confidence for detections (0-1)
+            device: Device to run on ('cpu', 'cuda', '0', '1', etc.)
+            image_size: Input size for inference (default: 416 for speed)
+            iou_threshold: NMS IoU threshold (default: 0.40, slightly lower for speed)
+        """
+        if model_path is None:
+            # Use same model finder as DocumentDetector
+            model_path = self._find_best_model()
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model not found: {model_path}")
+
+        self.model_path = model_path
+        self.confidence_threshold = confidence_threshold
+        self.device = device
+        self.image_size = image_size
+        self.iou_threshold = iou_threshold
+
+        print(f"Loading Real-Time YOLO model from: {model_path}")
+        print(f"Real-Time Optimizations: image_size={image_size}, grouping=disabled")
+        self.model = YOLO(model_path)
+        self.class_names = self.model.names
+        print(f"Real-Time model loaded. Classes: {self.class_names}")
+
+    def _find_best_model(self):
+        """Find the best.pt model in the runs directory."""
+        model_dir = Path(__file__).parent.parent.parent / "model" / "runs" / "train"
+
+        if not model_dir.exists():
+            raise FileNotFoundError(
+                f"Training runs directory not found: {model_dir}\n"
+                "Please train a model first or specify model_path explicitly."
+            )
+
+        # Find most recent training run
+        runs = sorted(model_dir.glob("yolov11s_*"), key=os.path.getmtime, reverse=True)
+
+        if not runs:
+            raise FileNotFoundError(f"No training runs found in {model_dir}")
+
+        best_model = runs[0] / "weights" / "best.pt"
+
+        if not best_model.exists():
+            raise FileNotFoundError(f"best.pt not found in {runs[0]}/weights/")
+
+        return str(best_model)
+
+    def detect_frame(self, image):
+        """
+        Run detection on a video frame (optimized for speed).
+        Returns lightweight response for real-time streaming.
+
+        Args:
+            image: Input image (numpy array)
+
+        Returns:
+            dict: Lightweight detection results {
+                "detections": [...],
+                "counts": {...},
+                "inference_time_ms": float
+            }
+        """
+        start_time = time.time()
+
+        # Get image dimensions
+        img_height, img_width = image.shape[:2]
+
+        # Run inference with optimized parameters
+        results = self.model.predict(
+            source=image,
+            conf=self.confidence_threshold,
+            iou=self.iou_threshold,
+            imgsz=self.image_size,  # Smaller size for speed
+            device=self.device,
+            verbose=False,
+            half=False  # Disable FP16 for CPU stability
+        )[0]
+
+        # Parse detections into lightweight format
+        detections = []
+        counts = {"stamp": 0, "signature": 0, "qr": 0}
+
+        if results.boxes is not None and len(results.boxes) > 0:
+            boxes = results.boxes.xyxy.cpu().numpy()  # x1, y1, x2, y2
+            confidences = results.boxes.conf.cpu().numpy()
+            class_ids = results.boxes.cls.cpu().numpy().astype(int)
+
+            for box, conf, cls_id in zip(boxes, confidences, class_ids):
+                x1, y1, x2, y2 = map(int, box)  # Convert to int for JSON
+                class_name = self.class_names[cls_id]
+
+                detection = {
+                    "bbox": [x1, y1, x2, y2],  # [x_min, y_min, x_max, y_max]
+                    "confidence": round(float(conf), 3),  # Round to 3 decimals
+                    "class": class_name
+                }
+
+                detections.append(detection)
+                counts[class_name] = counts.get(class_name, 0) + 1
+
+        inference_time = (time.time() - start_time) * 1000  # Convert to ms
+
+        return {
+            "detections": detections,
+            "counts": counts,
+            "image_size": {"width": img_width, "height": img_height},
+            "inference_time_ms": round(inference_time, 2)
+        }
+
+
+# Global real-time detector instance (singleton)
+_realtime_detector_instance = None
+
+
+def get_realtime_detector(model_path=None, confidence_threshold=0.25, device='cpu',
+                          image_size=416, iou_threshold=0.40):
+    """
+    Get or create real-time detector instance (singleton).
+
+    Args:
+        model_path: Path to model weights
+        confidence_threshold: Detection threshold
+        device: Device to run on
+        image_size: Input size for inference (default: 416)
+        iou_threshold: NMS IoU threshold (default: 0.40)
+
+    Returns:
+        RealTimeDetector instance
+    """
+    global _realtime_detector_instance
+
+    if _realtime_detector_instance is None:
+        _realtime_detector_instance = RealTimeDetector(
+            model_path=model_path,
+            confidence_threshold=confidence_threshold,
+            device=device,
+            image_size=image_size,
+            iou_threshold=iou_threshold
+        )
+
+    return _realtime_detector_instance
