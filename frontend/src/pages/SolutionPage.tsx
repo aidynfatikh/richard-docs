@@ -2,9 +2,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { DetectionResponse } from '../types/api.types';
 import { HackathonHeader } from '../components/HackathonHeader';
 import { HackathonFooter } from '../components/HackathonFooter';
+import { ImageWithDetections } from '../components/ImageWithDetections';
 
 interface SolutionPageState {
-  results: Array<{ file: string; data: DetectionResponse }>;
+  results: Array<{ fileName: string; fileObject: File; data: DetectionResponse }>;
 }
 
 export function SolutionPage() {
@@ -130,7 +131,7 @@ export function SolutionPage() {
               Document Details
             </h2>
             <div className="space-y-6">
-              {results.map(({ file, data }, index) => (
+              {results.map(({ fileName, fileObject, data }, index) => (
                 <div
                   key={index}
                   className="p-6 rounded-2xl"
@@ -144,7 +145,7 @@ export function SolutionPage() {
                         <path d="M13 2V9H20" stroke="rgba(0, 23, 255, 1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                       <h3 className="font-semibold text-lg truncate" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                        {file}
+                        {fileName}
                       </h3>
                     </div>
                     <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ 
@@ -154,6 +155,17 @@ export function SolutionPage() {
                     }}>
                       Document #{index + 1}
                     </span>
+                  </div>
+
+                  {/* Image Visualization */}
+                  <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                    <ImageWithDetections
+                      imageFile={fileObject}
+                      stamps={data.stamps}
+                      signatures={data.signatures}
+                      qrs={data.qrs}
+                      imageSize={data.image_size}
+                    />
                   </div>
 
                   {/* Detection Summary */}

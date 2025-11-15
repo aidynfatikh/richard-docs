@@ -101,12 +101,16 @@ export function HackathonHero() {
       );
 
       // Filter successful results
-      const successfulResults: Array<{ file: string; data: DetectionResponse }> = [];
+      const successfulResults: Array<{ fileName: string; fileObject: File; data: DetectionResponse }> = [];
       const errors: string[] = [];
 
-      responses.forEach(({ file, result }) => {
+      responses.forEach(({ file, result }, index) => {
         if (result.success && result.data) {
-          successfulResults.push({ file, data: result.data });
+          successfulResults.push({ 
+            fileName: file, 
+            fileObject: files[index], 
+            data: result.data 
+          });
         } else {
           errors.push(`${file}: ${result.error?.detail || 'Unknown error'}`);
         }
