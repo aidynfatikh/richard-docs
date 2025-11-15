@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
+import cv2
+import numpy as np
 import uvicorn
 
 app = FastAPI()
@@ -9,56 +11,84 @@ def read_root():
 
 #fake ml lol
 @app.post("/predict")
-async def predict(request: Request):
-    return {
-        "document_id": "doc_mock_001",
-        "pages": [
-            {
-                "page_number": 1,
-                "size": {
-                    "width_px": 2480,
-                    "height_px": 3508
-                },
-                "stamps": [
-                    {
-                        "id": "stamp_1",
-                        "bbox": [320, 2200, 900, 2800],
-                        "confidence": 0.94,
-                        "type": "round_blue",
-                        "text": "ТОО «Компания»"
-                    }
-                ],
-                "signatures": [
-                    {
-                        "id": "sign_1",
-                        "bbox": [1400, 2300, 2100, 2700],
-                        "confidence": 0.91,
-                        "role": "director",
-                        "is_digital": False
-                    }
-                ],
-                "qrs": [
-                    {
-                        "id": "qr_1",
-                        "bbox": [1800, 200, 2300, 700],
-                        "confidence": 0.97,
-                        "decoded_data": "https://example.com/verify?id=12345",
-                        "version": "QR-Model-v1"
-                    }
-                ]
-            }
-        ],
-        "summary": {
-            "total_pages": 1,
-            "total_stamps": 1,
-            "total_signatures": 1,
-            "total_qrs": 1
-        },
-        "meta": {
-            "model_version": "doc-detector-v0.1-mock",
-            "inference_time_ms": 23
-        }
-    }
+async def predict(file: UploadFile = File(...)):
+    #1
+    # короче достаем тут картинку и декодируем ее
+    try:
+        contents = await file.read()
+        arr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        return {"error": "Failed to read image"}
+    
+    #2
+    #ищем qr код и проверяем его
+    qr_data = check_qr_website(img)
+
+    if not qr_data["success"]:
+        return {"error": qr_data["error"]}
+
+    qr_data = qr_data["url"]
+
+    #3
+    # тут будем чекать на штампы и печати
+
+    #4 
+    # тут будет распознавание подписей
+
+    #5
+    # тут будет сборка json ответа
+
+
+    # return {
+    #     "document_id": "doc_mock_001",
+    #     "pages": [
+    #         {
+    #             "page_number": 1,
+    #             "size": {
+    #                 "width_px": 2480,
+    #                 "height_px": 3508
+    #             },
+    #             "stamps": [
+    #                 {
+    #                     "id": "stamp_1",
+    #                     "bbox": [320, 2200, 900, 2800],
+    #                     "confidence": 0.94,
+    #                     "type": "round_blue",
+    #                     "text": "ТОО «Компания»"
+    #                 }
+    #             ],
+    #             "signatures": [
+    #                 {
+    #                     "id": "sign_1",
+    #                     "bbox": [1400, 2300, 2100, 2700],
+    #                     "confidence": 0.91,
+    #                     "role": "director",
+    #                     "is_digital": False
+    #                 }
+    #             ],
+    #             "qrs": [
+    #                 {
+    #                     "id": "qr_1",
+    #                     "bbox": [1800, 200, 2300, 700],
+    #                     "confidence": 0.97,
+    #                     "decoded_data": "https://example.com/verify?id=12345",
+    #                     "version": "QR-Model-v1"
+    #                 }
+    #             ]
+    #         }
+    #     ],
+    #     "summary": {
+    #         "total_pages": 1,
+    #         "total_stamps": 1,
+    #         "total_signatures": 1,
+    #         "total_qrs": 1
+    #     },
+    #     "meta": {
+    #         "model_version": "doc-detector-v0.1-mock",
+    #         "inference_time_ms": 23
+    #     }
+    # }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
