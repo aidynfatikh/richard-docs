@@ -271,42 +271,51 @@ class DocScanner(object):
 
     def scan(self, image_path):
 
-        RESCALED_HEIGHT = 500.0
+        RESCALED_HEIGHT = 1100.0
         OUTPUT_DIR = 'output'
 
-        # load the image and compute the ratio of the old height
-        # to the new height, clone it, and resize it
+        # Load image
         image = cv2.imread(image_path)
+        assert image is not None
 
-        assert(image is not None)
-
+        # Resize for contour detection
         ratio = image.shape[0] / RESCALED_HEIGHT
         orig = image.copy()
-        rescaled_image = imutils.resize(image, height = int(RESCALED_HEIGHT))
+        rescaled_image = imutils.resize(image, height=int(RESCALED_HEIGHT))
 
-        # get the contour of the document
+        # Detect document contour
         screenCnt = self.get_contour(rescaled_image)
 
         if self.interactive:
             screenCnt = self.interactive_get_contour(screenCnt, rescaled_image)
 
-        # apply the perspective transformation
+        # Perspective transform
         warped = transform.four_point_transform(orig, screenCnt * ratio)
 
-        # convert the warped image to grayscale
-        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+        # ===== HIGH QUALITY IMAGE PROCESSING =====
 
-        # sharpen image
-        sharpen = cv2.GaussianBlur(gray, (0,0), 3)
-        sharpen = cv2.addWeighted(gray, 1.5, sharpen, -0.5, 0)
+        # 1. Contrast enhancement (CLAHE in LAB)
+        lab = cv2.cvtColor(warped, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        enhanced = cv2.merge((cl, a, b))
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        # apply adaptive threshold to get black and white effect
-        thresh = cv2.adaptiveThreshold(sharpen, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 15)
+        # 2. Soft sharpen filter
+        kernel = np.array([[0, -1, 0],
+                        [-1, 5, -1],
+                        [0, -1, 0]])
+        sharpened = cv2.filter2D(enhanced, -1, kernel)
 
-        # save the transformed image
+        # 3. Save high-quality JPEG
         basename = os.path.basename(image_path)
-        cv2.imwrite(OUTPUT_DIR + '/' + basename, thresh)
-        print("Proccessed " + basename)
+        output_path = os.path.join(OUTPUT_DIR, basename)
+
+        cv2.imwrite(output_path, sharpened, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+        print(f"Processed {basename}, saved to {output_path}")
+
 
     def scan_image_bytes(self, image_bytes):
         """
@@ -350,19 +359,28 @@ class DocScanner(object):
         # Apply perspective transformation
         warped = transform.four_point_transform(orig, screenCnt * ratio)
 
-        # Convert to grayscale
-        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+        # ===== HIGH QUALITY ENHANCEMENT =====
 
-        # Sharpen image
-        sharpen = cv2.GaussianBlur(gray, (0, 0), 3)
-        sharpen = cv2.addWeighted(gray, 1.5, sharpen, -0.5, 0)
+        # 1. CLAHE – improve contrast
+        lab = cv2.cvtColor(warped, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        enhanced = cv2.merge((cl, a, b))
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        # Apply adaptive threshold to get black and white effect
-        thresh = cv2.adaptiveThreshold(sharpen, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY, 21, 15)
+        # 2. Soft sharpen
+        kernel = np.array([[0, -1, 0],
+                        [-1, 5, -1],
+                        [0, -1, 0]])
+        sharpened = cv2.filter2D(enhanced, -1, kernel)
 
-        # Encode transformed image to JPEG
-        success, encoded_image = cv2.imencode('.jpg', thresh)
+        # 3. High-quality encode
+        success, encoded_image = cv2.imencode(
+            '.jpg',
+            sharpened,
+            [cv2.IMWRITE_JPEG_QUALITY, 95]
+        )
 
         if not success:
             return {
