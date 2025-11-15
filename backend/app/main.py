@@ -371,6 +371,7 @@ async def process_document(
     # Step 2: Apply perspective correction if needed
     processed_contents = contents
     scan_metadata = None
+    transformed_image_b64 = None  # Will hold base64-encoded scanned image
 
     if should_scan and doc_scanner is not None:
         print(f"[Scanner] Applying perspective correction...")
@@ -380,6 +381,11 @@ async def process_document(
             if scan_result['success']:
                 # Use scanned image for detection
                 processed_contents = scan_result['transformed_image']
+
+                # Encode transformed image to base64 for frontend display
+                transformed_b64 = base64.b64encode(scan_result['transformed_image']).decode("utf-8")
+                transformed_image_b64 = f"data:image/jpeg;base64,{transformed_b64}"
+
                 scan_metadata = {
                     'applied': True,
                     'corners_detected': scan_result.get('corners'),
@@ -460,6 +466,11 @@ async def process_document(
             response["meta"]["confidence_threshold"] = confidence
             response["meta"]["is_pdf"] = format_info['is_pdf']
             response["processing"] = processing_metadata
+
+            # Include transformed image if perspective correction was applied
+            if transformed_image_b64:
+                response["transformed_image"] = transformed_image_b64
+
             return response
         else:
             # Multi-page PDF
