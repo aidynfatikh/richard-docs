@@ -1,0 +1,163 @@
+[33mcommit 8d44314c624ce574fa009287aed5bae6160227c0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 20:18:20 2025 +0500
+
+    Revert "req"
+    
+    This reverts commit 8660b96bdf77f388dcb1d70df53418eb2a6f8e74.
+
+[33mcommit 8660b96bdf77f388dcb1d70df53418eb2a6f8e74[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 20:13:39 2025 +0500
+
+    req
+
+[33mcommit 3045329797a5aa2dda8e4a3a9403160e82789317[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 19:52:00 2025 +0500
+
+    req
+
+[33mcommit 2729f8d6d1a0d5afdf13bae5769d55329cf8daed[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 19:47:24 2025 +0500
+
+    endpoint for multi file process
+
+[33mcommit 3b9d4fdf335aea06e33c26522fa4132a1e409ea5[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 19:04:51 2025 +0500
+
+    process boxes on front
+
+[33mcommit 4c7b03ded60c9bb963410cf63cfceee1c93d3ed3[m
+Author: dauren <apasdauren70@gmail.com>
+Date:   Sat Nov 15 18:55:20 2025 +0500
+
+    api
+
+[33mcommit 9f97dc71344105f7054fa3b5e7db8ae70ff7bb3d[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 18:50:13 2025 +0500
+
+    model v2
+
+[33mcommit 60c650e0b6779077947052ecf1c1ca4fee3f6788[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 18:36:48 2025 +0500
+
+    Docker compose fix
+
+[33mcommit d256e1bdcc07008e71abb5741a3ff79a8e8220e4[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 18:27:59 2025 +0500
+
+    Fix
+
+[33mcommit 8723dc80e93f80e3b4d6fddbaf0655f7eedaebba[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 18:24:25 2025 +0500
+
+    Dockerfile and docker-compose are hereeee
+
+[33mcommit 347867d04c7416c270daeb60e05b3b9d897b828d[m
+Author: dauren <apasdauren70@gmail.com>
+Date:   Sat Nov 15 17:53:47 2025 +0500
+
+    minor changes ui
+
+[33mcommit 7443ab1c34241cf36829cbec9f9b105658f74e14[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 16:27:03 2025 +0500
+
+    Front front
+
+[33mcommit 7635fc15037221b4d1d20810b0ae05a987bc0f54[m
+Author: dauren <apasdauren70@gmail.com>
+Date:   Sat Nov 15 16:17:58 2025 +0500
+
+    sexy armeta
+
+[33mcommit f0162d5348d328a853abe762cfbf3e00921021ae[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 15:11:56 2025 +0500
+
+    add detect endpoint
+
+[33mcommit 8fdef4635c04c08dec8ea39caa19f48d572008f0[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 15:01:14 2025 +0500
+
+    model v1
+
+[33mcommit 0978b66f05cec1ff3b893559d880d98272fed961[m
+Author: dauren <apasdauren70@gmail.com>
+Date:   Sat Nov 15 14:46:49 2025 +0500
+
+    armeta design
+
+[33mcommit 31ef1218a8d885155d47a66d772062d596da2769[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 14:09:49 2025 +0500
+
+    Backend: drawn a pipeline for furure predict endpoint
+
+[33mcommit baa83f3fa835fea356a717450636a24792c8b916[m
+Author: dauren <apasdauren70@gmail.com>
+Date:   Sat Nov 15 14:06:52 2025 +0500
+
+    front initial commit
+
+[33mcommit 96420ab05b3f94b7e93a54bd19c280605acf7982[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 14:00:16 2025 +0500
+
+    dataset build script
+
+[33mcommit 985eda2e8ae89e8f94d4287684189fa4383842fd[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:57:31 2025 +0500
+
+    Backend: QR checker implemented
+
+[33mcommit 05948e528daa4c0b177899d914ea6b461d562e23[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:51:03 2025 +0500
+
+    Another QR
+
+[33mcommit 2c766c62bd0e8045ddf8ea3a7784b4b0941937b9[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:45:02 2025 +0500
+
+    Added check qr function
+
+[33mcommit 9db71ec0761721012b982bf1c8e6df0535a8ba08[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:26:40 2025 +0500
+
+    Backend: new prediction json example
+
+[33mcommit be44f9f2d5eda40d5238133bd9abc0a54c0e7841[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:23:12 2025 +0500
+
+    Backend: route for predictions added
+
+[33mcommit 0b9e9cc440a8f3f2afa5b69186b1980436bec784[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:20:45 2025 +0500
+
+    FastAPI backend initialized
+
+[33mcommit db27413a5357c516e738756a6e6365e546e2ee9f[m
+Author: bizhanchik <bizhanash@gmail.com>
+Date:   Sat Nov 15 13:16:54 2025 +0500
+
+    React, vite frontend initialized
+
+[33mcommit 1b7a99223023dd4403a20b5fcedc6b7f9a5aca7d[m
+Author: aidynfatikh <aidyn.fatikh@gmail.com>
+Date:   Sat Nov 15 13:11:50 2025 +0500
+
+    init
