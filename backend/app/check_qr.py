@@ -1,37 +1,52 @@
+import sys
 import cv2
-from pyzbar.pyzbar import decode
 import requests
 
 def check_qr_website(image_path: str):
-    # 1. Читаем изображение
     img = cv2.imread(image_path)
+    if img is None:
+        return {"success": False, "error": f"cannot read image: {image_path}"}
 
-    # 2. Декодируем QR
-    decoded = decode(img)
+    detector = cv2.QRCodeDetector()
+    data, points, _ = detector.detectAndDecode(img)
 
-    if not decoded:
+    if not data:
         return {"success": False, "error": "QR code not found"}
 
-    # Берём первый найденный QR
-    qr_data = decoded[0].data.decode("utf-8")
+    url = data.strip()
 
-    # 3. Проверяем URL
+    if not url.startswith("http"):
+        url = "https://" + url
+
     try:
-        response = requests.get(qr_data, timeout=5)
-        is_alive = response.status_code < 400
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/121.0.0.0 Safari/537.36"
+            )
+        }
+
+        r = requests.get(url, headers=headers, timeout=5)
+
+        return {
+            "success": True,
+            "url": url,
+            "alive": r.status_code < 400,
+            "status": r.status_code
+        }
     except Exception as e:
         return {
             "success": True,
-            "url": qr_data,
+            "url": url,
             "alive": False,
             "error": str(e)
         }
 
-    return {
-        "success": True,
-        "url": qr_data,
-        "alive": is_alive,
-        "status": response.status_code
-    }
 
-print(check_qr_website("qr.svg"))
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python check_qr.py path/to/qr_image.png")
+        sys.exit(1)
+
+    print(check_qr_website(sys.argv[1]))
