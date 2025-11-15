@@ -1,12 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import type { DetectionResponse, BatchDetectionResponse, Detection } from '../types/api.types';
-import { HackathonHeader } from '../components/HackathonHeader';
-import { HackathonFooter } from '../components/HackathonFooter';
 import { ImageWithDetections } from '../components/ImageWithDetections';
-import { detectDevice } from '../utils/deviceDetection';
 
 interface SolutionPageState {
-  results?: Array<{ fileName: string; fileObject: File; data: DetectionResponse }>;
+  results?: Array<{ fileName: string; fileObject: File | null; data: DetectionResponse }>;
   batchResults?: BatchDetectionResponse;
 }
 
@@ -14,7 +12,7 @@ export function SolutionPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as SolutionPageState | null;
-  const isMobile = detectDevice().isMobile;
+  const [selectedDocIndex, setSelectedDocIndex] = useState(0);
 
   // Handle batch results from mobile scanner
   const isBatchMode = state?.batchResults !== undefined;
@@ -69,10 +67,10 @@ export function SolutionPage() {
     ? state.batchResults!.meta.total_processing_time_ms / results.length
     : results.reduce((sum, r) => sum + (r as any).data.meta.total_processing_time_ms, 0) / results.length;
 
+  const selectedResult = !isBatchMode && results.length > 0 ? results[selectedDocIndex] as any : null;
+
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-      {!isMobile && <HackathonHeader />}
-      <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+    <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           {/* Page Header */}
           <div className="text-center mb-12">
@@ -143,13 +141,13 @@ export function SolutionPage() {
           </div>
 
           {/* Documents Selector */}
-          {results.length > 1 && (
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                Documents ({results.length})
+          {!isBatchMode && results.length > 1 && (
+            <div className="mb-12">
+              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                Documents
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {results.map((result, index) => (
+                {results.map((result: any, index) => (
                   <button
                     key={index}
                     onClick={() => setSelectedDocIndex(index)}
@@ -179,20 +177,22 @@ export function SolutionPage() {
             </div>
           )}
 
-          {/* Individual Document Results */}
-          <div>
-            <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-              Document Details
-            </h2>
-            <div className="space-y-6">
-              {results.map((result: any, index) => {
-                const fileName = isBatchMode ? result.filename : result.fileName;
-                const fileObject = isBatchMode ? null : result.fileObject;
-                const data = isBatchMode ? result : result.data;
+          {/* Selected Document Details */}
+          {!isBatchMode && selectedResult && (
+            <div>
+              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                Document Details
+              </h2>
+              <div>
+                {(() => {
+                const result = selectedResult;
+                const fileName = result.fileName;
+                const fileObject = result.fileObject;
+                const data = result.data;
 
                 return (
                 <div
-                  key={index}
+                  key={selectedDocIndex}
                   className="p-6 rounded-2xl"
                   style={{ backgroundColor: 'rgba(17, 17, 17, 0.5)', border: '1px solid rgba(153, 153, 153, 0.2)' }}
                 >
@@ -212,7 +212,7 @@ export function SolutionPage() {
                       color: 'rgba(0, 23, 255, 1)',
                       border: '1px solid rgba(0, 23, 255, 0.3)'
                     }}>
-                      Document #{index + 1}
+                      Document #{selectedDocIndex + 1}
                     </span>
                   </div>
 
@@ -225,43 +225,39 @@ export function SolutionPage() {
                         signatures={data.signatures}
                         qrs={data.qrs}
                         imageSize={data.image_size}
+                        base64Image={data.page_image}
                       />
                     </div>
                   )}
-                  {!fileObject && isBatchMode && (
-                    <div className="mb-6 p-4 rounded-xl text-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', color: 'rgba(153, 153, 153, 1)' }}>
-                      <p className="text-sm">Scanned document #{index + 1}</p>
-                      <p className="text-xs mt-2">Image visualization not available in batch mode</p>
-                    </div>
-                  )}
 
-                {/* Detection Summary */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                  <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(0, 23, 255, 1)' }}>
-                      {selectedResult.data.summary.total_detections}
+
+                  {/* Detection Summary */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                      <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(0, 23, 255, 1)' }}>
+                        {data.summary.total_detections}
+                      </div>
+                      <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Total</div>
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Total</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(239, 68, 68, 1)' }}>
-                      {selectedResult.data.summary.total_stamps}
+                    <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                      <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(239, 68, 68, 1)' }}>
+                        {data.summary.total_stamps}
+                      </div>
+                      <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Stamps</div>
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Stamps</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(34, 197, 94, 1)' }}>
-                      {selectedResult.data.summary.total_signatures}
+                    <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                      <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(34, 197, 94, 1)' }}>
+                        {data.summary.total_signatures}
+                      </div>
+                      <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Signatures</div>
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Signatures</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-                    <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(59, 130, 246, 1)' }}>
-                      {selectedResult.data.summary.total_qrs}
+                    <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                      <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(59, 130, 246, 1)' }}>
+                        {data.summary.total_qrs}
+                      </div>
+                      <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>QR Codes</div>
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>QR Codes</div>
                   </div>
-                </div>
 
                   {/* Detailed Detections */}
                   {(data.stamps.length > 0 || data.signatures.length > 0 || data.qrs.length > 0) && (
@@ -334,22 +330,101 @@ export function SolutionPage() {
                     </div>
                   )}
 
-                {/* Metadata */}
-                <div className="mt-4 pt-4 border-t grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs" style={{ borderColor: 'rgba(153, 153, 153, 0.2)' }}>
-                  <div>
-                    <div className="font-semibold" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                       Processing Time: {selectedResult.data.meta.total_processing_time_ms.toFixed(0)}ms
+                  {/* Metadata */}
+                  <div className="mt-4 pt-4 border-t grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs" style={{ borderColor: 'rgba(153, 153, 153, 0.2)' }}>
+                    <div>
+                      <div className="font-semibold" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                        Processing Time: {data.meta.total_processing_time_ms.toFixed(0)}ms
+                      </div>
                     </div>
                   </div>
                 </div>
                 );
-              })}
+                })()}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Batch Mode Results */}
+          {isBatchMode && (
+            <div>
+              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                Document Details
+              </h2>
+              <div className="space-y-6">
+                {results.map((result: any, index) => {
+                  const fileName = result.filename;
+                  const data = result;
+
+                  return (
+                  <div
+                    key={index}
+                    className="p-6 rounded-2xl"
+                    style={{ backgroundColor: 'rgba(17, 17, 17, 0.5)', border: '1px solid rgba(153, 153, 153, 0.2)' }}
+                  >
+                    <div className="flex items-start justify-between mb-6">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M13 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V9L13 2Z" stroke="rgba(0, 23, 255, 1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M13 2V9H20" stroke="rgba(0, 23, 255, 1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <h3 className="font-semibold text-lg truncate" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                          {fileName}
+                        </h3>
+                      </div>
+                      <span className="text-xs px-3 py-1 rounded-full font-medium" style={{ 
+                        backgroundColor: 'rgba(0, 23, 255, 0.1)', 
+                        color: 'rgba(0, 23, 255, 1)',
+                        border: '1px solid rgba(0, 23, 255, 0.3)'
+                      }}>
+                        Document #{index + 1}
+                      </span>
+                    </div>
+
+                    <div className="mb-6 p-4 rounded-xl text-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', color: 'rgba(153, 153, 153, 1)' }}>
+                      <p className="text-sm">Scanned document #{index + 1}</p>
+                      <p className="text-xs mt-2">Image visualization not available in batch mode</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                      <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                        <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(0, 23, 255, 1)' }}>
+                          {data.summary.total_detections}
+                        </div>
+                        <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Total</div>
+                      </div>
+                      <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                        <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(239, 68, 68, 1)' }}>
+                          {data.summary.total_stamps}
+                        </div>
+                        <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Stamps</div>
+                      </div>
+                      <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                        <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(34, 197, 94, 1)' }}>
+                          {data.summary.total_signatures}
+                        </div>
+                        <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Signatures</div>
+                      </div>
+                      <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+                        <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(59, 130, 246, 1)' }}>
+                          {data.summary.total_qrs}
+                        </div>
+                        <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>QR Codes</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t text-xs" style={{ borderColor: 'rgba(153, 153, 153, 0.2)' }}>
+                      <div className="font-semibold" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                        Processing Time: {data.meta.total_processing_time_ms.toFixed(0)}ms
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </main>
-
-      {!isMobile && <HackathonFooter />}
-    </div>
   );
 }
