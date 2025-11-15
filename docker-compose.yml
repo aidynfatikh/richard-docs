@@ -12,6 +12,7 @@ services:
       # Mount source code for hot-reload during development
       - ./backend/app:/app/app
       - ./backend/document_scan:/app/document_scan
+      - ./model:/model
     environment:
       # Development settings
       - PYTHONUNBUFFERED=1
