@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  backend:
+    container_name: richard-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot-reload during development
+      - ./backend/app:/app/app
+      - ./backend/document_scan:/app/document_scan
+    environment:
+      # Development settings
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=debug
+      # Optional: Override model path if needed
+      # - MODEL_PATH=/app/model/runs/train/yolov11s_lora_20251115_144408/weights/best.pt
+      # Optional: Device selection (cpu/cuda)
+      # - DEVICE=cpu
+      # Optional: Confidence threshold
+      # - CONFIDENCE_THRESHOLD=0.25
+    restart: unless-stopped
+    # Uncomment to limit resources in production
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 1G
+    networks:
+      - richard-network
+
+networks:
+  richard-network:
+    driver: bridge
