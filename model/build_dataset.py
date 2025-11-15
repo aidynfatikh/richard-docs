@@ -12,6 +12,7 @@ import random
 import cv2
 from pathlib import Path
 from pdf2image import convert_from_path
+from PIL import Image
 
 
 # ============================================================================
@@ -174,15 +175,22 @@ def process_annotation(ann, class_to_id, images_dir, output_dir, split):
 
 def visualize_samples(annotations, class_names, images_dir, output_dir, num_samples=20):
     """Visualize random training samples with bounding boxes."""
-    # Generate random colors for each class
-    colors = {}
-    for idx, class_name in enumerate(class_names):
-        random.seed(idx * 42)
-        colors[class_name] = (
-            random.randint(0, 255),
-            random.randint(0, 255),
-            random.randint(0, 255)
-        )
+    # Define specific colors for each class (BGR format for OpenCV)
+    colors = {
+        'stamp': (0, 0, 255),        # Red
+        'signature': (0, 255, 0),    # Green
+        'qr': (255, 0, 0),            # Blue
+    }
+    
+    # Generate random colors for any other classes not predefined
+    for class_name in class_names:
+        if class_name not in colors:
+            random.seed(hash(class_name))
+            colors[class_name] = (
+                random.randint(0, 255),
+                random.randint(0, 255),
+                random.randint(0, 255)
+            )
     
     # Select random samples
     samples = random.sample(annotations, min(num_samples, len(annotations)))
@@ -191,7 +199,8 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
     
     for ann in samples:
         image_name = ann['image']
-        img_path = os.path.join(output_dir, 'images', 'train', image_name)
+        # Use source images directory, not the output directory
+        img_path = os.path.join(images_dir, image_name)
         
         if not os.path.exists(img_path):
             continue
@@ -201,16 +210,28 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
         if img is None:
             continue
         
+        # Verify image dimensions match annotation
+        actual_height, actual_width = img.shape[:2]
+        expected_width = ann['width']
+        expected_height = ann['height']
+        
         # Draw bounding boxes
         for obj in ann.get('objects', []):
             label = obj['label']
             bbox = obj['bbox']
             x_min, y_min, width, height = bbox
             
+            # Use integers for pixel coordinates
             x1 = int(x_min)
             y1 = int(y_min)
             x2 = int(x_min + width)
             y2 = int(y_min + height)
+            
+            # Clamp coordinates to image bounds
+            x1 = max(0, min(x1, actual_width - 1))
+            y1 = max(0, min(y1, actual_height - 1))
+            x2 = max(0, min(x2, actual_width))
+            y2 = max(0, min(y2, actual_height))
             
             color = colors[label]
             
@@ -222,11 +243,14 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
             (text_width, text_height), baseline = cv2.getTextSize(
                 label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
             )
-            cv2.rectangle(img, (x1, y1 - text_height - 10), 
-                         (x1 + text_width, y1), color, -1)
+            
+            # Ensure label background is within image bounds
+            label_y1 = max(text_height + 10, y1)
+            cv2.rectangle(img, (x1, label_y1 - text_height - 10), 
+                         (x1 + text_width, label_y1), color, -1)
             
             # Draw label text
-            cv2.putText(img, label_text, (x1, y1 - 5),
+            cv2.putText(img, label_text, (x1, label_y1 - 5),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         
         # Save visualization
@@ -237,12 +261,12 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
 def convert_pdfs_to_images(pdf_dir, output_dir, annotations):
     """
     Convert PDF pages to PNG images based on annotations.
-    Only converts the pages that have annotations.
+    Resizes images to match the dimensions specified in annotations.
     """
     os.makedirs(output_dir, exist_ok=True)
     
-    # Collect all required PDF pages
-    pdf_pages = {}
+    # Collect all required PDF pages with their target dimensions
+    pdf_pages = {}  # {pdf_base: {page_num: (width, height)}}
     for ann in annotations:
         image_name = ann['image']
         # Parse image name: "pdfname_page_X.png"
@@ -250,16 +274,17 @@ def convert_pdfs_to_images(pdf_dir, output_dir, annotations):
         if len(parts) == 2:
             pdf_base = parts[0]
             page_num = int(parts[1].replace('.png', ''))
+            target_width = ann['width']
+            target_height = ann['height']
             
-            # Find matching PDF file (case-insensitive)
             if pdf_base not in pdf_pages:
-                pdf_pages[pdf_base] = []
-            pdf_pages[pdf_base].append(page_num)
+                pdf_pages[pdf_base] = {}
+            pdf_pages[pdf_base][page_num] = (target_width, target_height)
     
     print(f"      Found {len(pdf_pages)} PDFs with {len(annotations)} annotated pages")
     
     converted_count = 0
-    for pdf_base, pages in pdf_pages.items():
+    for pdf_base, pages_info in pdf_pages.items():
         # Find the PDF file (try different extensions and cases)
         pdf_path = None
         for ext in ['.pdf', '.PDF']:
@@ -274,7 +299,7 @@ def convert_pdfs_to_images(pdf_dir, output_dir, annotations):
         
         try:
             # Convert only required pages
-            for page_num in sorted(set(pages)):
+            for page_num, (target_width, target_height) in pages_info.items():
                 output_path = os.path.join(output_dir, f"{pdf_base}_page_{page_num}.png")
                 
                 if os.path.exists(output_path):
@@ -282,11 +307,15 @@ def convert_pdfs_to_images(pdf_dir, output_dir, annotations):
                     continue
                 
                 # Convert single page (page_num is 1-indexed)
-                images = convert_from_path(pdf_path, first_page=page_num, last_page=page_num, dpi=150)
+                # Use high DPI first, then resize to exact dimensions
+                images = convert_from_path(pdf_path, first_page=page_num, last_page=page_num, dpi=200)
                 if images:
-                    images[0].save(output_path, 'PNG')
+                    img = images[0]
+                    # Resize to match annotation dimensions exactly
+                    img_resized = img.resize((target_width, target_height), Image.LANCZOS)
+                    img_resized.save(output_path, 'PNG')
                     converted_count += 1
-                    print(f"      Converted: {pdf_base} page {page_num}")
+                    print(f"      Converted: {pdf_base} page {page_num} -> {target_width}x{target_height}")
         
         except Exception as e:
             print(f"      Error converting {pdf_base}: {str(e)}")

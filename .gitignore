@@ -36,6 +36,11 @@ model/dataset/
 model/digital_inspector_dataset/
 model/raw_data
 
+# Training runs - exclude everything except best.pt and last.pt
+!model/runs/**/weights/
+model/runs/**/weights/*
+!model/runs/**/weights/best.pt
+!model/runs/**/weights/last.pt
 
 # PDF files
 *.pdf
@@ -52,7 +57,9 @@ model/raw_data/pdfs/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.
+
+yolo11*.pt
 
 # Node
 node_modules/
