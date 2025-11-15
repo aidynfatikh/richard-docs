@@ -50,25 +50,27 @@ export function SolutionPage() {
     <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Page Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl sm:text-5xl font-bold mb-4" style={{ color: 'rgba(0, 23, 255, 1)' }}>
-            Analysis Results
-          </h1>
-          <p className="text-lg" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-            Detailed detection report for {results.length} document{results.length > 1 ? 's' : ''}
-          </p>
-            <button
-              onClick={() => navigate('/')}
-              className="mt-6 px-6 py-2 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
-              style={{
-                backgroundColor: 'rgba(17, 17, 17, 1)',
-                color: 'rgba(247, 247, 248, 1)',
-                border: '1px solid rgba(153, 153, 153, 0.3)'
-              }}
-            >
-              ← Analyze More Documents
-            </button>
+        <div className="mb-0">
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-5xl font-bold mb-4" style={{ color: 'rgba(0, 23, 255, 1)' }}>
+              Analysis Results
+            </h1>
+            <p className="text-lg" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+              Detailed detection report for {results.length} document{results.length > 1 ? 's' : ''}
+            </p>
           </div>
+          <button
+            onClick={() => navigate('/')}
+            className="mb-6 px-6 py-2 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
+            style={{
+              backgroundColor: 'rgba(17, 17, 17, 1)',
+              color: 'rgba(247, 247, 248, 1)',
+              border: '1px solid rgba(153, 153, 153, 0.3)'
+            }}
+          >
+            ← Analyze More Documents
+          </button>
+        </div>
 
           {/* Overall Statistics */}
           <div className="mb-12 p-6 rounded-2xl" style={{ backgroundColor: 'rgba(17, 17, 17, 0.5)', border: '1px solid rgba(153, 153, 153, 0.2)' }}>
