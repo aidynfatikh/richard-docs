@@ -35,7 +35,9 @@ async def startup_event():
         detector = get_detector(
             model_path=None,  # Auto-finds best model
             confidence_threshold=0.25,
-            device='cpu'  # Change to 'cuda' or '0' if GPU available
+            device='cpu',  # Change to 'cuda' or '0' if GPU available
+            enable_grouping=True,  # Enable signature grouping
+            group_iou_threshold=0.3  # IoU threshold for grouping
         )
         print("✓ Model loaded successfully")
     except Exception as e:
@@ -56,12 +58,19 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Detailed health check."""
-    return {
+    health_info = {
         "status": "healthy" if detector is not None else "model_not_loaded",
         "model_loaded": detector is not None,
         "model_path": detector.model_path if detector else None,
         "classes": detector.class_names if detector else None
     }
+    
+    if detector is not None:
+        health_info["grouping_enabled"] = detector.enable_grouping
+        health_info["group_iou_threshold"] = detector.group_iou_threshold
+        health_info["confidence_threshold"] = detector.confidence_threshold
+    
+    return health_info
 
 
 @app.post("/detect")

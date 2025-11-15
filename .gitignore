@@ -36,6 +36,8 @@ model/dataset/
 model/digital_inspector_dataset/
 model/raw_data
 
+movel/dataset_overlap
+
 # Training runs - exclude everything except best.pt and last.pt
 !model/runs/**/weights/
 model/runs/**/weights/*

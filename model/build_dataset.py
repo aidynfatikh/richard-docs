@@ -119,7 +119,7 @@ def create_directory_structure(output_dir):
         os.path.join(output_dir, 'images', 'val'),
         os.path.join(output_dir, 'labels', 'train'),
         os.path.join(output_dir, 'labels', 'val'),
-        os.path.join(output_dir, 'train-vis')
+        os.path.join(output_dir, 'vis')
     ]
     
     for d in dirs:
@@ -167,14 +167,31 @@ def process_annotation(ann, class_to_id, images_dir, output_dir, split):
             class_id = class_to_id[class_name]
             bbox = obj['bbox']
             
+            # Validate bbox
+            if not bbox or len(bbox) != 4:
+                print(f"Warning: Skipping invalid bbox in {image_name}: {bbox}")
+                continue
+            
+            # Validate bbox dimensions
+            if bbox[2] <= 0 or bbox[3] <= 0:
+                print(f"Warning: Skipping invalid bbox dimensions in {image_name}: {bbox}")
+                continue
+            
             x_center, y_center, width, height = bbox_to_yolo(bbox, img_width, img_height)
+            
+            # Validate normalized coordinates are in valid range
+            if not (0 <= x_center <= 1 and 0 <= y_center <= 1 and 0 < width <= 1 and 0 < height <= 1):
+                print(f"Warning: Skipping out-of-range normalized bbox in {image_name}: "
+                      f"x={x_center:.3f}, y={y_center:.3f}, w={width:.3f}, h={height:.3f}")
+                continue
+            
             f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
     
     return True
 
 
 def visualize_samples(annotations, class_names, images_dir, output_dir, num_samples=20):
-    """Visualize random training samples with bounding boxes."""
+    """Visualize all samples by reading YOLO labels to ensure accuracy."""
     # Define specific colors for each class (BGR format for OpenCV)
     colors = {
         'stamp': (0, 0, 255),        # Red
@@ -192,14 +209,28 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
                 random.randint(0, 255)
             )
     
-    # Select random samples
-    samples = random.sample(annotations, min(num_samples, len(annotations)))
+    # Visualize ALL annotations instead of just samples
+    samples = annotations
     
-    vis_dir = os.path.join(output_dir, 'train-vis')
+    vis_dir = os.path.join(output_dir, 'vis')
     
     for ann in samples:
         image_name = ann['image']
-        # Use source images directory, not the output directory
+        
+        # Find the label file in train or val
+        label_name = os.path.splitext(image_name)[0] + '.txt'
+        label_path = None
+        for split in ['train', 'val']:
+            candidate_path = os.path.join(output_dir, 'labels', split, label_name)
+            if os.path.exists(candidate_path):
+                label_path = candidate_path
+                break
+        
+        if not label_path:
+            print(f"Warning: Label file not found for {image_name}")
+            continue
+        
+        # Use source images directory
         img_path = os.path.join(images_dir, image_name)
         
         if not os.path.exists(img_path):
@@ -210,48 +241,59 @@ def visualize_samples(annotations, class_names, images_dir, output_dir, num_samp
         if img is None:
             continue
         
-        # Verify image dimensions match annotation
-        actual_height, actual_width = img.shape[:2]
-        expected_width = ann['width']
-        expected_height = ann['height']
+        # Get actual image dimensions
+        img_height, img_width = img.shape[:2]
         
-        # Draw bounding boxes
-        for obj in ann.get('objects', []):
-            label = obj['label']
-            bbox = obj['bbox']
-            x_min, y_min, width, height = bbox
-            
-            # Use integers for pixel coordinates
-            x1 = int(x_min)
-            y1 = int(y_min)
-            x2 = int(x_min + width)
-            y2 = int(y_min + height)
-            
-            # Clamp coordinates to image bounds
-            x1 = max(0, min(x1, actual_width - 1))
-            y1 = max(0, min(y1, actual_height - 1))
-            x2 = max(0, min(x2, actual_width))
-            y2 = max(0, min(y2, actual_height))
-            
-            color = colors[label]
-            
-            # Draw rectangle
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
-            
-            # Draw label background
-            label_text = label
-            (text_width, text_height), baseline = cv2.getTextSize(
-                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
-            )
-            
-            # Ensure label background is within image bounds
-            label_y1 = max(text_height + 10, y1)
-            cv2.rectangle(img, (x1, label_y1 - text_height - 10), 
-                         (x1 + text_width, label_y1), color, -1)
-            
-            # Draw label text
-            cv2.putText(img, label_text, (x1, label_y1 - 5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # Read YOLO labels and draw boxes
+        with open(label_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) != 5:
+                    continue
+                
+                class_id = int(parts[0])
+                x_center_norm = float(parts[1])
+                y_center_norm = float(parts[2])
+                width_norm = float(parts[3])
+                height_norm = float(parts[4])
+                
+                # Convert from normalized YOLO format to pixel coordinates
+                x1 = int((x_center_norm - width_norm / 2) * img_width)
+                y1 = int((y_center_norm - height_norm / 2) * img_height)
+                x2 = int((x_center_norm + width_norm / 2) * img_width)
+                y2 = int((y_center_norm + height_norm / 2) * img_height)
+                
+                # Clamp to image bounds
+                x1 = max(0, min(x1, img_width - 1))
+                y1 = max(0, min(y1, img_height - 1))
+                x2 = max(0, min(x2, img_width))
+                y2 = max(0, min(y2, img_height))
+                
+                # Skip if invalid
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                
+                # Get class name and color
+                class_name = class_names[class_id] if class_id < len(class_names) else 'unknown'
+                color = colors.get(class_name, (255, 255, 255))
+                
+                # Draw rectangle
+                cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
+                
+                # Draw label background
+                label_text = class_name
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+                )
+                
+                # Ensure label background is within image bounds
+                label_y1 = max(text_height + 10, y1)
+                cv2.rectangle(img, (x1, label_y1 - text_height - 10), 
+                             (x1 + text_width, label_y1), color, -1)
+                
+                # Draw label text
+                cv2.putText(img, label_text, (x1, label_y1 - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         
         # Save visualization
         vis_path = os.path.join(vis_dir, image_name)
@@ -391,8 +433,9 @@ def main():
     
     # Visualize samples
     print("\n[8/8] Creating visualizations...")
-    visualize_samples(train_annotations, class_names, IMAGES_DIR, OUTPUT_DIR)
-    print("      Saved visualizations to train-vis/")
+    all_annotations = train_annotations + val_annotations
+    visualize_samples(all_annotations, class_names, IMAGES_DIR, OUTPUT_DIR)
+    print(f"      Saved {len(all_annotations)} visualizations to vis/")
     
     # Create dataset.yaml
     yaml_path = create_dataset_yaml(OUTPUT_DIR, class_names)
