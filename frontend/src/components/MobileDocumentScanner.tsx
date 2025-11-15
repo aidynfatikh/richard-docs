@@ -57,6 +57,11 @@ export default function MobileDocumentScanner() {
         getCameraConstraints('environment')
       );
 
+      console.log("STREAM:", stream);
+      console.log("TRACKS:", stream.getVideoTracks());
+
+
+
       console.log('Camera stream obtained:', stream);
 
       if (videoRef.current) {
@@ -65,6 +70,8 @@ export default function MobileDocumentScanner() {
 
         // Wait for video to be ready and play
         videoRef.current.onloadedmetadata = () => {
+          console.log("VIDEO WIDTH:", videoRef.current?.videoWidth);
+          console.log("VIDEO HEIGHT:", videoRef.current?.videoHeight);
           console.log('Video metadata loaded');
           videoRef.current?.play().then(() => {
             console.log('Video playing');
