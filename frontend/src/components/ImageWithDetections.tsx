@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Detection } from '../types/api.types';
 
 interface ImageWithDetectionsProps {
-  imageFile: File;
+  imageFile: File | null;
   stamps: Detection[];
   signatures: Detection[];
   qrs: Detection[];
@@ -10,6 +10,7 @@ interface ImageWithDetectionsProps {
     width_px: number;
     height_px: number;
   };
+  base64Image?: string; // For PDF pages
 }
 
 const COLORS = {
@@ -24,6 +25,7 @@ export function ImageWithDetections({
   signatures,
   qrs,
   imageSize,
+  base64Image,
 }: ImageWithDetectionsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -36,9 +38,33 @@ export function ImageWithDetections({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    console.log('ImageWithDetections - Debug Info:', {
+      hasBase64Image: !!base64Image,
+      base64ImagePrefix: base64Image ? base64Image.substring(0, 50) : 'none',
+      hasImageFile: !!imageFile,
+      imageFileName: imageFile?.name || 'none'
+    });
+
     // Load image
     const img = new Image();
-    const url = URL.createObjectURL(imageFile);
+    let blobUrl: string | null = null;
+    
+    // Use base64 image if available (PDF), otherwise use file object
+    let imageSource: string | null = null;
+    
+    if (base64Image) {
+      imageSource = base64Image;
+      console.log('Using base64 image source');
+    } else if (imageFile) {
+      blobUrl = URL.createObjectURL(imageFile);
+      imageSource = blobUrl;
+      console.log('Using blob URL:', blobUrl);
+    }
+    
+    if (!imageSource) {
+      console.error('No image source available');
+      return;
+    }
 
     img.onload = () => {
       // Calculate display size (maintain aspect ratio, max width 800px)
@@ -109,16 +135,20 @@ export function ImageWithDetections({
 
     img.onerror = () => {
       console.error('Failed to load image');
-      URL.revokeObjectURL(url);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
     };
 
-    img.src = url;
+    img.src = imageSource;
 
-    // Cleanup: only revoke URL when component unmounts or imageFile changes
+    // Cleanup: only revoke blob URL if we created one
     return () => {
-      URL.revokeObjectURL(url);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
     };
-  }, [imageFile, stamps, signatures, qrs, imageSize]);
+  }, [imageFile, base64Image, stamps, signatures, qrs, imageSize]);
 
   return (
     <div className="relative">

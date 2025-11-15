@@ -101,14 +101,22 @@ export function HackathonHero() {
       );
 
       // Filter successful results
-      const successfulResults: Array<{ fileName: string; fileObject: File; data: DetectionResponse }> = [];
+      const successfulResults: Array<{ fileName: string; fileObject: File | null; data: DetectionResponse }> = [];
       const errors: string[] = [];
 
       responses.forEach(({ file, result }, index) => {
         if (result.success && result.data) {
+          console.log(`Processing result for ${file}:`, {
+            hasPageImage: !!result.data.page_image,
+            pageImagePrefix: result.data.page_image ? result.data.page_image.substring(0, 50) : 'none',
+            isPDF: result.data.meta?.is_pdf
+          });
+          
+          // For PDFs with page_image, set fileObject to null (we'll use base64 image)
+          const fileObject = result.data.page_image ? null : files[index];
           successfulResults.push({ 
             fileName: file, 
-            fileObject: files[index], 
+            fileObject: fileObject, 
             data: result.data 
           });
         } else {

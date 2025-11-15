@@ -144,8 +144,10 @@ async def detect_elements(
         start_time = time.time()
         results = []
         
-        for img, page_num in pages:
+        for img, page_num, base64_img in pages:
             page_start = time.time()
+            
+            print(f"Processing page {page_num}: base64_img exists = {base64_img is not None}, length = {len(base64_img) if base64_img else 0}")
             
             # Run detection
             result = detector.detect(img)
@@ -153,6 +155,13 @@ async def detect_elements(
             # Add page-specific metadata
             result["meta"]["page_number"] = page_num
             result["meta"]["page_processing_time_ms"] = round((time.time() - page_start) * 1000, 2)
+            
+            # Add base64 image if available (for PDFs)
+            if base64_img:
+                result["page_image"] = base64_img
+                print(f"Added page_image to result for page {page_num}, prefix: {base64_img[:50]}")
+            else:
+                print(f"No base64_img for page {page_num}")
             
             results.append(result)
         

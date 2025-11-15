@@ -172,9 +172,22 @@ class APIService {
 
       const result = await handleResponse<DetectionResponse | MultiPageDetectionResponse>(response);
       
+      console.log('API Response received:', {
+        success: result.success,
+        hasData: !!result.data,
+        isMultiPage: result.data && 'document_type' in result.data,
+        data: result.data
+      });
+      
       // Handle multi-page PDF response - convert to single page format
       if (result.success && result.data && 'document_type' in result.data) {
         const multiPageData = result.data as MultiPageDetectionResponse;
+        
+        console.log('Multi-page PDF detected:', {
+          totalPages: multiPageData.total_pages,
+          firstPageHasImage: !!multiPageData.pages[0]?.page_image,
+          firstPageImagePrefix: multiPageData.pages[0]?.page_image?.substring(0, 50)
+        });
         
         // Aggregate all pages into a single result
         const allStamps = multiPageData.pages.flatMap(page => page.stamps);
@@ -183,6 +196,9 @@ class APIService {
         
         // Use the first page's image size (or could use the largest page)
         const imageSize = multiPageData.pages[0]?.image_size || { width_px: 0, height_px: 0 };
+        
+        // Get the first page's base64 image if available
+        const pageImage = multiPageData.pages[0]?.page_image;
         
         const aggregatedResponse: DetectionResponse = {
           image_size: imageSize,
@@ -195,8 +211,14 @@ class APIService {
             total_processing_time_ms: multiPageData.meta.total_processing_time_ms,
             confidence_threshold: multiPageData.meta.confidence_threshold,
             is_pdf: true,
-          }
+          },
+          ...(pageImage && { page_image: pageImage }) // Include page_image if it exists
         };
+        
+        console.log('Aggregated response:', {
+          hasPageImage: !!aggregatedResponse.page_image,
+          pageImagePrefix: aggregatedResponse.page_image?.substring(0, 50)
+        });
         
         return {
           success: true,

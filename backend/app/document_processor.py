@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 import fitz  # PyMuPDF
 from PIL import Image
+import base64
 
 
 class DocumentProcessor:
@@ -85,7 +86,7 @@ class DocumentProcessor:
                 print(f"Error processing image with OpenCV: {e2}")
                 return None
     
-    def pdf_to_images(self, pdf_bytes: bytes) -> List[Tuple[np.ndarray, int]]:
+    def pdf_to_images(self, pdf_bytes: bytes) -> List[Tuple[np.ndarray, int, str]]:
         """
         Convert PDF pages to images.
         
@@ -93,7 +94,7 @@ class DocumentProcessor:
             pdf_bytes: Raw PDF bytes
             
         Returns:
-            List of (image_array, page_number) tuples
+            List of (image_array, page_number, base64_image) tuples
         """
         images = []
         
@@ -119,7 +120,13 @@ class DocumentProcessor:
                 img_array = np.array(pil_image)
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
                 
-                images.append((img_array, page_num + 1))  # 1-indexed page numbers
+                # Create base64 encoded image for frontend
+                buffered = io.BytesIO()
+                pil_image.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                base64_str = f"data:image/png;base64,{img_base64}"
+                
+                images.append((img_array, page_num + 1, base64_str))  # 1-indexed page numbers
             
             pdf_document.close()
             
@@ -129,7 +136,7 @@ class DocumentProcessor:
         
         return images
     
-    def process_file(self, file_bytes: bytes, filename: str) -> List[Tuple[np.ndarray, Optional[int]]]:
+    def process_file(self, file_bytes: bytes, filename: str) -> List[Tuple[np.ndarray, Optional[int], Optional[str]]]:
         """
         Process any supported file format.
         
@@ -138,8 +145,9 @@ class DocumentProcessor:
             filename: Original filename
             
         Returns:
-            List of (image_array, page_number) tuples.
-            For images, page_number is None. For PDFs, it's 1-indexed.
+            List of (image_array, page_number, base64_image) tuples.
+            For images, page_number is None and base64_image is None. 
+            For PDFs, page_number is 1-indexed and base64_image contains the rendered page.
             
         Raises:
             ValueError: If file format is not supported or processing fails
@@ -160,7 +168,7 @@ class DocumentProcessor:
         if img is None:
             raise ValueError("Failed to process image file")
         
-        return [(img, None)]  # Single image, no page number
+        return [(img, None, None)]  # Single image, no page number, no base64
     
     def get_format_info(self, filename: str) -> dict:
         """Get information about file format."""

@@ -61,6 +61,7 @@ export interface DetectionResponse {
   qrs: Detection[];
   summary: DetectionSummary;
   meta: DetectionMeta;
+  page_image?: string; // Base64 image data for PDF pages
 }
 
 /**
