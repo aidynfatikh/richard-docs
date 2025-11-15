@@ -19,6 +19,7 @@ export default function MobileDocumentScanner() {
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<number | undefined>(undefined);
   const stabilityTimerRef = useRef<number | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string>('');
@@ -30,6 +31,7 @@ export default function MobileDocumentScanner() {
   const [showPreview, setShowPreview] = useState(false);
   const [processingBatch, setProcessingBatch] = useState(false);
   const [cameraStarted, setCameraStarted] = useState(false);
+  const [useFileInput, setUseFileInput] = useState(false);
 
   // Don't auto-start camera - wait for user interaction
   useEffect(() => {
@@ -45,7 +47,10 @@ export default function MobileDocumentScanner() {
 
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera API not available. Please use HTTPS or a modern browser.');
+        // Fallback to file input on HTTP
+        setUseFileInput(true);
+        setError('Camera requires HTTPS. Using photo capture instead.');
+        return;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia(
@@ -274,6 +279,38 @@ export default function MobileDocumentScanner() {
     captureDocument();
   };
 
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsProcessing(true);
+
+    try {
+      for (const file of Array.from(files)) {
+        const result = await apiService.scanDocument(file);
+
+        if (result.success && result.data) {
+          const scannedDoc: ScannedDocument = {
+            id: Date.now().toString() + Math.random(),
+            transformedImage: result.data.transformed_image,
+            originalBlob: file,
+            timestamp: Date.now(),
+          };
+          setScannedDocs((prev) => [...prev, scannedDoc]);
+        }
+      }
+    } catch (err) {
+      console.error('File processing error:', err);
+      setError('Failed to process photos');
+    } finally {
+      setIsProcessing(false);
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const removeDocument = (id: string) => {
     setScannedDocs((prev) => prev.filter((doc) => doc.id !== id));
   };
@@ -324,7 +361,7 @@ export default function MobileDocumentScanner() {
       </div>
 
       {/* Camera not started - show start button */}
-      {!cameraStarted && (
+      {!cameraStarted && !useFileInput && (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-white">
           <svg
             className="w-24 h-24 mb-6 text-blue-500"
@@ -368,6 +405,56 @@ export default function MobileDocumentScanner() {
                   Go to your browser settings and enable camera permissions for this site
                 </p>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* File Input Fallback (for HTTP) */}
+      {useFileInput && (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-white">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+          <svg
+            className="w-24 h-24 mb-6 text-blue-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+            />
+          </svg>
+          <h2 className="text-2xl font-bold mb-2">Take Photos</h2>
+          <p className="text-gray-400 text-center mb-8 max-w-sm">
+            HTTPS required for live camera. Tap below to take photos with your camera
+          </p>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessing}
+            className="px-8 py-4 bg-blue-600 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {isProcessing ? 'Processing...' : 'Take Photo'}
+          </button>
+          {error && !error.includes('HTTPS') && (
+            <div className="mt-6 bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded max-w-sm text-center text-sm">
+              {error}
             </div>
           )}
         </div>
@@ -430,7 +517,7 @@ export default function MobileDocumentScanner() {
       )}
 
       {/* Scanned documents preview */}
-      {cameraStarted && scannedDocs.length > 0 && (
+      {(cameraStarted || useFileInput) && scannedDocs.length > 0 && (
         <div className="bg-gray-900 p-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-white font-semibold">
