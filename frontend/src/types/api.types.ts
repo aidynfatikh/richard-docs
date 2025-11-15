@@ -227,6 +227,7 @@ export interface ProcessingMetadata {
  */
 export interface ProcessDocumentResponse extends DetectionResponse {
   processing: ProcessingMetadata;
+  transformed_image?: string; // Base64-encoded scanned image (if perspective correction applied)
 }
 
 /**

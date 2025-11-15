@@ -385,7 +385,7 @@ export function SolutionPage() {
                     // Single image file
                     <div className="p-6 rounded-2xl" style={{ backgroundColor: 'rgba(17, 17, 17, 0.5)', border: '1px solid rgba(153, 153, 153, 0.2)' }}>
                       {/* Image Visualization */}
-                      {(result.fileObject || result.data.page_image) && (
+                      {(result.fileObject || result.data.page_image || (result.data as any).transformed_image) && (
                         <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                           <ImageWithDetections
                             imageFile={result.fileObject}
@@ -393,7 +393,7 @@ export function SolutionPage() {
                             signatures={result.data.signatures}
                             qrs={result.data.qrs}
                             imageSize={result.data.image_size}
-                            base64Image={result.data.page_image}
+                            base64Image={(result.data as any).transformed_image || result.data.page_image}
                           />
                         </div>
                       )}
