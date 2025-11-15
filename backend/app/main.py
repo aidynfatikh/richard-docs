@@ -6,7 +6,7 @@ import uvicorn
 from typing import Optional
 import time
 
-from model_service import get_detector
+from app.model_service import get_detector
 
 app = FastAPI(
     title="Document Detection API",
