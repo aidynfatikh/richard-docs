@@ -1,22 +1,23 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HackathonHeader } from './components/HackathonHeader';
-import { HackathonHero } from './components/HackathonHero';
 import { HackathonFooter } from './components/HackathonFooter';
-import { SolutionOverview } from './components/SolutionOverview';
-import { TeamSection } from './components/TeamSection';
+import { HomePage } from './pages/HomePage';
+import { SolutionPage } from './pages/SolutionPage';
 
 function App() {
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-      <HackathonHeader />
-      
-      <main>
-        <HackathonHero />
-        <SolutionOverview />
-        <TeamSection />
-      </main>
-      
-      <HackathonFooter />
-    </div>
+    <BrowserRouter>
+      <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
+        <HackathonHeader />
+        
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/solution" element={<SolutionPage />} />
+        </Routes>
+        
+        <HackathonFooter />
+      </div>
+    </BrowserRouter>
   );
 }
 

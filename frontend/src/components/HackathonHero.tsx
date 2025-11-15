@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { validateFile, formatFileSize, getAcceptAttribute } from '../utils/fileValidation';
+import { apiService } from '../services/api.service';
+import type { DetectionResponse } from '../types/api.types';
 
 export function HackathonHero() {
+  const navigate = useNavigate();
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-clear error after 5 seconds
@@ -25,7 +32,19 @@ export function HackathonHero() {
     }
 
     const fileArray = Array.from(selectedFiles);
-    setFiles(prev => [...prev, ...fileArray]);
+    
+    // Validate each file before adding
+    const validFiles: File[] = [];
+    for (const file of fileArray) {
+      const validation = validateFile(file);
+      if (!validation.isValid) {
+        setError(validation.error || 'Invalid file');
+        return;
+      }
+      validFiles.push(file);
+    }
+    
+    setFiles(prev => [...prev, ...validFiles]);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -67,9 +86,46 @@ export function HackathonHero() {
       setError('Please upload at least one document for inspection');
       return;
     }
-    
-    // TODO: Send files to backend
-    console.log('Inspecting files:', files);
+
+    setIsProcessing(true);
+    setProgress({ current: 0, total: files.length });
+
+    try {
+      // Process files with progress tracking
+      const responses = await apiService.detectMultipleDocuments(
+        files,
+        0.25, // confidence threshold
+        (current, total) => {
+          setProgress({ current, total });
+        }
+      );
+
+      // Filter successful results
+      const successfulResults: Array<{ file: string; data: DetectionResponse }> = [];
+      const errors: string[] = [];
+
+      responses.forEach(({ file, result }) => {
+        if (result.success && result.data) {
+          successfulResults.push({ file, data: result.data });
+        } else {
+          errors.push(`${file}: ${result.error?.detail || 'Unknown error'}`);
+        }
+      });
+
+      if (errors.length > 0) {
+        setError(`Some files failed: ${errors.join(', ')}`);
+      } else if (successfulResults.length === 0) {
+        setError('All files failed to process');
+      } else {
+        // Navigate to solution page with results
+        navigate('/solution', { state: { results: successfulResults } });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process documents');
+    } finally {
+      setIsProcessing(false);
+      setProgress({ current: 0, total: 0 });
+    }
   };
 
   return (
@@ -89,7 +145,7 @@ export function HackathonHero() {
           </h1>
 
           {/* Subheading */}
-          <h2 className="text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-2xl font-semibold mb-12 sm:mb-16 md:mb-20 lg:mb-24 cursor-pointer transition-colors duration-200" 
+          <h2 className="text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-2xl font-semibold mb-12 sm:mb-6 md:mb-8 lg:mb-10 cursor-pointer transition-colors duration-200" 
             style={{ color: 'rgba(247, 247, 248, 1)' }}
             onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
             onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
@@ -103,8 +159,10 @@ export function HackathonHero() {
               ref={fileInputRef}
               type="file"
               multiple
+              accept={getAcceptAttribute()}
               onChange={handleFileInputChange}
               className="hidden"
+              disabled={isProcessing}
             />
             
             {/* Drop Zone */}
@@ -127,10 +185,13 @@ export function HackathonHero() {
                 </svg>
                 <div>
                   <p className="text-lg font-semibold mb-2" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                    {isDragging ? 'Drop files here' : 'Drag & drop files here'}
+                    {isProcessing ? 'Processing...' : isDragging ? 'Drop files here' : 'Drag & drop files here'}
                   </p>
                   <p className="text-sm" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-                    or click to browse • All file formats supported
+                    {isProcessing 
+                      ? `Analyzing ${progress.current} of ${progress.total} files...`
+                      : 'Images (JPG, PNG, WEBP, TIFF, BMP) and PDFs supported • Max 50MB per file'
+                    }
                   </p>
                 </div>
               </div>
@@ -158,13 +219,24 @@ export function HackathonHero() {
                   </div>
                   <button
                     onClick={handleInspect}
-                    className="w-full sm:w-auto px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 mr-3"
+                    disabled={isProcessing}
+                    className="w-full sm:w-auto px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 mr-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       backgroundColor: 'rgba(0, 23, 255, 1)',
                       color: 'rgba(255, 255, 255, 1)'
                     }}
                   >
-                    Analyze Documents
+                    {isProcessing ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      'Analyze Documents'
+                    )}
                   </button>
                 </div>
                 <div className="max-h-40 overflow-y-auto space-y-2" style={{
@@ -186,7 +258,7 @@ export function HackathonHero() {
                           {file.name}
                         </span>
                         <span className="text-xs flex-shrink-0 hidden sm:inline" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-                          ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          ({formatFileSize(file.size)})
                         </span>
                       </div>
                       <button

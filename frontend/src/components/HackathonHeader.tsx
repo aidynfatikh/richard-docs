@@ -8,7 +8,13 @@ export function HackathonHeader() {
     setIsMobileMenuOpen(false);
     const element = document.getElementById(section);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
+      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+      const offset = section === 'approach' ? 150 : section === 'team' ? 50 : 100;
+      const offsetPosition = elementPosition - offset;
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
     }
   };
 
