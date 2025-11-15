@@ -151,7 +151,7 @@ class APIService {
   async detectDocumentElements(
     file: File,
     confidence?: number
-  ): Promise<APIResponse<DetectionResponse>> {
+  ): Promise<APIResponse<DetectionResponse | MultiPageDetectionResponse>> {
     try {
       // Create FormData for file upload
       const formData = new FormData();
@@ -201,8 +201,8 @@ class APIService {
     files: File[],
     confidence?: number,
     onProgress?: (current: number, total: number) => void
-  ): Promise<Array<{ file: string; result: APIResponse<DetectionResponse> }>> {
-    const results: Array<{ file: string; result: APIResponse<DetectionResponse> }> = [];
+  ): Promise<Array<{ file: string; result: APIResponse<DetectionResponse | MultiPageDetectionResponse> }>> {
+    const results: Array<{ file: string; result: APIResponse<DetectionResponse | MultiPageDetectionResponse> }> = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
