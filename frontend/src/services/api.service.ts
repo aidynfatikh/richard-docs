@@ -7,6 +7,7 @@
 import { API_CONFIG } from '../config/api.config';
 import type {
   DetectionResponse,
+  MultiPageDetectionResponse,
   HealthResponse,
   APIResponse,
   APIError,
@@ -123,6 +124,7 @@ class APIService {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true', // Required for ngrok URLs
           },
         },
         5000 // Shorter timeout for health check
@@ -162,10 +164,47 @@ class APIService {
       const response = await fetchWithTimeout(url.toString(), {
         method: 'POST',
         body: formData,
+        headers: {
+          'ngrok-skip-browser-warning': 'true', // Required for ngrok URLs
+        },
         // Don't set Content-Type header - browser will set it with boundary for multipart/form-data
       });
 
-      return handleResponse<DetectionResponse>(response);
+      const result = await handleResponse<DetectionResponse | MultiPageDetectionResponse>(response);
+      
+      // Handle multi-page PDF response - convert to single page format
+      if (result.success && result.data && 'document_type' in result.data) {
+        const multiPageData = result.data as MultiPageDetectionResponse;
+        
+        // Aggregate all pages into a single result
+        const allStamps = multiPageData.pages.flatMap(page => page.stamps);
+        const allSignatures = multiPageData.pages.flatMap(page => page.signatures);
+        const allQRs = multiPageData.pages.flatMap(page => page.qrs);
+        
+        // Use the first page's image size (or could use the largest page)
+        const imageSize = multiPageData.pages[0]?.image_size || { width_px: 0, height_px: 0 };
+        
+        const aggregatedResponse: DetectionResponse = {
+          image_size: imageSize,
+          stamps: allStamps,
+          signatures: allSignatures,
+          qrs: allQRs,
+          summary: multiPageData.summary,
+          meta: {
+            model_version: multiPageData.pages[0]?.meta.model_version || 'unknown',
+            total_processing_time_ms: multiPageData.meta.total_processing_time_ms,
+            confidence_threshold: multiPageData.meta.confidence_threshold,
+            is_pdf: true,
+          }
+        };
+        
+        return {
+          success: true,
+          data: aggregatedResponse
+        };
+      }
+      
+      return result as APIResponse<DetectionResponse>;
     } catch (error) {
       return {
         success: false,

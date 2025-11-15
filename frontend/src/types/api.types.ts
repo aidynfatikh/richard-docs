@@ -12,6 +12,8 @@ export interface Detection {
   confidence: number;
   class_name: 'stamp' | 'signature' | 'qr';
   class_id: number;
+  grouped?: boolean;
+  group_count?: number;
 }
 
 /**
@@ -22,6 +24,8 @@ export interface DetectionSummary {
   total_signatures: number;
   total_qrs: number;
   total_detections: number;
+  raw_detections?: number;
+  grouped_detections?: number | null;
 }
 
 /**
@@ -29,9 +33,14 @@ export interface DetectionSummary {
  */
 export interface DetectionMeta {
   model_version: string;
-  inference_time_ms: number;
+  inference_time_ms?: number;
   total_processing_time_ms: number;
   confidence_threshold: number;
+  grouping_enabled?: boolean;
+  group_iou_threshold?: number;
+  page_number?: number;
+  page_processing_time_ms?: number;
+  is_pdf?: boolean;
 }
 
 /**
@@ -43,7 +52,7 @@ export interface ImageSize {
 }
 
 /**
- * Complete detection response from backend
+ * Complete detection response from backend (single page)
  */
 export interface DetectionResponse {
   image_size: ImageSize;
@@ -52,6 +61,21 @@ export interface DetectionResponse {
   qrs: Detection[];
   summary: DetectionSummary;
   meta: DetectionMeta;
+}
+
+/**
+ * Multi-page PDF detection response from backend
+ */
+export interface MultiPageDetectionResponse {
+  document_type: 'pdf';
+  total_pages: number;
+  pages: DetectionResponse[];
+  summary: DetectionSummary;
+  meta: {
+    total_processing_time_ms: number;
+    confidence_threshold: number;
+    is_pdf: boolean;
+  };
 }
 
 /**

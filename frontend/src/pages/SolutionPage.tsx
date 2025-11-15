@@ -1,7 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { DetectionResponse } from '../types/api.types';
-import { HackathonHeader } from '../components/HackathonHeader';
-import { HackathonFooter } from '../components/HackathonFooter';
 import { ImageWithDetections } from '../components/ImageWithDetections';
 
 interface SolutionPageState {
@@ -16,30 +14,26 @@ export function SolutionPage() {
   // Redirect if no results
   if (!state || !state.results || state.results.length === 0) {
     return (
-      <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-        <HackathonHeader />
-        <main className="min-h-screen flex items-center justify-center px-4">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-              No Results Found
-            </h1>
-            <p className="text-lg mb-6" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-              Please analyze documents first to see results.
-            </p>
-            <button
-              onClick={() => navigate('/')}
-              className="px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
-              style={{
-                backgroundColor: 'rgba(0, 23, 255, 1)',
-                color: 'rgba(255, 255, 255, 1)'
-              }}
-            >
-              Go Back to Analyzer
-            </button>
-          </div>
-        </main>
-        <HackathonFooter />
-      </div>
+      <main className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+            No Results Found
+          </h1>
+          <p className="text-lg mb-6" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+            Please analyze documents first to see results.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
+            style={{
+              backgroundColor: 'rgba(0, 23, 255, 1)',
+              color: 'rgba(255, 255, 255, 1)'
+            }}
+          >
+            Go Back to Analyzer
+          </button>
+        </div>
+      </main>
     );
   }
 
@@ -53,19 +47,16 @@ export function SolutionPage() {
   const avgProcessingTime = results.reduce((sum, r) => sum + r.data.meta.total_processing_time_ms, 0) / results.length;
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-      <HackathonHeader />
-      
-      <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Page Header */}
-          <div className="text-center mb-12">
-            <h1 className="text-4xl sm:text-5xl font-bold mb-4" style={{ color: 'rgba(0, 23, 255, 1)' }}>
-              Analysis Results
-            </h1>
-            <p className="text-lg" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-              Detailed detection report for {results.length} document{results.length > 1 ? 's' : ''}
-            </p>
+    <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Page Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl sm:text-5xl font-bold mb-4" style={{ color: 'rgba(0, 23, 255, 1)' }}>
+            Analysis Results
+          </h1>
+          <p className="text-lg" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+            Detailed detection report for {results.length} document{results.length > 1 ? 's' : ''}
+          </p>
             <button
               onClick={() => navigate('/')}
               className="mt-6 px-6 py-2 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
@@ -293,9 +284,6 @@ export function SolutionPage() {
             </div>
           </div>
         </div>
-      </main>
-
-      <HackathonFooter />
-    </div>
+    </main>
   );
 }
