@@ -77,7 +77,7 @@ export function HackathonFooter() {
 
         <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t text-center transition-all duration-300 hover:border-opacity-80" style={{ borderColor: 'rgba(255, 255, 255, 1)' }}>
           <p className="text-xs sm:text-sm transition-opacity duration-300 hover:opacity-90" style={{ color: 'rgba(255, 255, 255, 1)', opacity: 0.6 }}>
-            Built with 🖤 Team Richards • <a href="https://github.com/aidynfatikh/richard-docs" target="_blank" rel="noopener noreferrer" className="hover:underline transition-all duration-300 font-semibold">View on GitHub - RichardDocs</a>
+            Team Richards • <a href="https://github.com/aidynfatikh/richard-docs" target="_blank" rel="noopener noreferrer" className="hover:underline transition-all duration-300 font-semibold">View on GitHub - RichardDocs</a>
           </p>
         </div>
       </div>

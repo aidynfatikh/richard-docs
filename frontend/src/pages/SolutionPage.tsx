@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { DetectionResponse, BatchDetectionResponse } from '../types/api.types';
+import type { DetectionResponse, BatchDetectionResponse, Detection } from '../types/api.types';
 import { HackathonHeader } from '../components/HackathonHeader';
 import { HackathonFooter } from '../components/HackathonFooter';
 import { ImageWithDetections } from '../components/ImageWithDetections';
@@ -25,30 +25,26 @@ export function SolutionPage() {
   // Redirect if no results
   if (!state || (results.length === 0)) {
     return (
-      <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
-        <HackathonHeader />
-        <main className="min-h-screen flex items-center justify-center px-4">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-              No Results Found
-            </h1>
-            <p className="text-lg mb-6" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-              Please analyze documents first to see results.
-            </p>
-            <button
-              onClick={() => navigate('/')}
-              className="px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
-              style={{
-                backgroundColor: 'rgba(0, 23, 255, 1)',
-                color: 'rgba(255, 255, 255, 1)'
-              }}
-            >
-              Go Back to Analyzer
-            </button>
-          </div>
-        </main>
-        <HackathonFooter />
-      </div>
+      <main className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+            No Results Found
+          </h1>
+          <p className="text-lg mb-6" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+            Please analyze documents first to see results.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
+            style={{
+              backgroundColor: 'rgba(0, 23, 255, 1)',
+              color: 'rgba(255, 255, 255, 1)'
+            }}
+          >
+            Go Back to Analyzer
+          </button>
+        </div>
+      </main>
     );
   }
 
@@ -76,29 +72,29 @@ export function SolutionPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'rgba(0, 0, 0, 1)' }}>
       {!isMobile && <HackathonHeader />}
-      
       <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           {/* Page Header */}
           <div className="text-center mb-12">
+
             <h1 className="text-4xl sm:text-5xl font-bold mb-4" style={{ color: 'rgba(0, 23, 255, 1)' }}>
               Analysis Results
             </h1>
             <p className="text-lg" style={{ color: 'rgba(153, 153, 153, 1)' }}>
               Detailed detection report for {results.length} document{results.length > 1 ? 's' : ''}
             </p>
-            <button
-              onClick={() => navigate('/')}
-              className="mt-6 px-6 py-2 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
-              style={{
-                backgroundColor: 'rgba(17, 17, 17, 1)',
-                color: 'rgba(247, 247, 248, 1)',
-                border: '1px solid rgba(153, 153, 153, 0.3)'
-              }}
-            >
-              ← Analyze More Documents
-            </button>
           </div>
+          <button
+            onClick={() => navigate('/')}
+            className="mb-6 px-6 py-2 rounded-xl font-semibold transition-all duration-200 hover:brightness-90"
+            style={{
+              backgroundColor: 'rgba(17, 17, 17, 1)',
+              color: 'rgba(247, 247, 248, 1)',
+              border: '1px solid rgba(153, 153, 153, 0.3)'
+            }}
+          >
+            ← Analyze More Documents
+          </button>
 
           {/* Overall Statistics */}
           <div className="mb-12 p-6 rounded-2xl" style={{ backgroundColor: 'rgba(17, 17, 17, 0.5)', border: '1px solid rgba(153, 153, 153, 0.2)' }}>
@@ -241,7 +237,7 @@ export function SolutionPage() {
                             Stamps ({data.stamps.length})
                           </h4>
                           <div className="space-y-2">
-                            {data.stamps.map((stamp, i) => (
+                            {data.stamps.map((stamp: Detection, i: number) => (
                               <div key={i} className="flex items-center justify-between text-sm p-2 rounded" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
                                 <span style={{ color: 'rgba(153, 153, 153, 1)' }}>
                                   Position: ({stamp.bbox[0].toFixed(0)}, {stamp.bbox[1].toFixed(0)}) - ({stamp.bbox[2].toFixed(0)}, {stamp.bbox[3].toFixed(0)})
@@ -263,7 +259,7 @@ export function SolutionPage() {
                             Signatures ({data.signatures.length})
                           </h4>
                           <div className="space-y-2">
-                            {data.signatures.map((sig, i) => (
+                            {data.signatures.map((sig: Detection, i: number) => (
                               <div key={i} className="flex items-center justify-between text-sm p-2 rounded" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
                                 <span style={{ color: 'rgba(153, 153, 153, 1)' }}>
                                   Position: ({sig.bbox[0].toFixed(0)}, {sig.bbox[1].toFixed(0)}) - ({sig.bbox[2].toFixed(0)}, {sig.bbox[3].toFixed(0)})
@@ -285,7 +281,7 @@ export function SolutionPage() {
                             QR Codes ({data.qrs.length})
                           </h4>
                           <div className="space-y-2">
-                            {data.qrs.map((qr, i) => (
+                            {data.qrs.map((qr: Detection, i: number) => (
                               <div key={i} className="flex items-center justify-between text-sm p-2 rounded" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
                                 <span style={{ color: 'rgba(153, 153, 153, 1)' }}>
                                   Position: ({qr.bbox[0].toFixed(0)}, {qr.bbox[1].toFixed(0)}) - ({qr.bbox[2].toFixed(0)}, {qr.bbox[3].toFixed(0)})

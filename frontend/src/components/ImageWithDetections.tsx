@@ -105,7 +105,6 @@ export function ImageWithDetections({
       qrs.forEach(qr => drawDetection(qr, COLORS.qr, 'QR'));
 
       setImageLoaded(true);
-      URL.revokeObjectURL(url);
     };
 
     img.onerror = () => {
@@ -115,6 +114,7 @@ export function ImageWithDetections({
 
     img.src = url;
 
+    // Cleanup: only revoke URL when component unmounts or imageFile changes
     return () => {
       URL.revokeObjectURL(url);
     };
