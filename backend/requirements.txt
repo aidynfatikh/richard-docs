@@ -1,5 +1,5 @@
 fastapi==0.121.2
-fitz==0.0.1.dev2
+PyMuPDF==1.24.13
 matplotlib==3.10.7
 numpy==2.3.4
 opencv_python==4.11.0.86
@@ -9,4 +9,3 @@ Requests==2.32.5
 scipy==1.16.3
 ultralytics==8.3.228
 uvicorn==0.38.0
-PyMuPDF
