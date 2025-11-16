@@ -1,4 +1,15 @@
+# ============================================================================
+# Environment & Secrets
+# ============================================================================
+.env
+.env.local
+.env.*.local
+*.env
+**/.env
+
+# ============================================================================
 # Python
+# ============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,55 +31,138 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Virtual Environment
 venv/
 ENV/
 env/
-.venv
+.venv/
+.env/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# ============================================================================
+# Node / Frontend
+# ============================================================================
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+.DS_Store
+*.tsbuildinfo
+.eslintcache
+
+# ============================================================================
+# Machine Learning / Model
+# ============================================================================
 
 # Dataset directories
 model/raw_data/images/
 model/dataset/
 model/digital_inspector_dataset/
-model/raw_data
+model/raw_data/
+model/raw_data/pdfs/
+model/dataset_overlap/
 
-movel/dataset_overlap
-
-# Training runs - exclude everything except best.pt and last.pt
+# Training runs - keep only best.pt and last.pt
+model/runs/
+!model/runs/**/
 !model/runs/**/weights/
 model/runs/**/weights/*
 !model/runs/**/weights/best.pt
 !model/runs/**/weights/last.pt
 
-# PDF files
+# YOLO model weights (download if needed)
+yolo11*.pt
+yolov*.pt
+*.weights
+
+# Inference results (optional - remove if you want to keep)
+model/inference_results/*.jpg
+model/inference_results/*.png
+
+# ============================================================================
+# Documents & Large Files
+# ============================================================================
 *.pdf
+*.PDF
 
-# Large data files
-model/raw_data/pdfs/
+# Test files
+backend/input.jpg
+backend/output.jpg
+backend/test_*.jpg
+backend/test_*.png
 
-# IDE
+# ============================================================================
+# IDE & Editor
+# ============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-*
 
+# ============================================================================
 # OS
+# ============================================================================
 .DS_Store
-Thumbs.
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
 
-yolo11*.pt
-
-# Node
-node_modules/
-frontend/dist/
-frontend/node_modules/
-
+# ============================================================================
 # Logs
+# ============================================================================
 *.log
+logs/
+*.log.*
 
-.vscode/
+# ============================================================================
+# Temporary & Cache
+# ============================================================================
+*.tmp
+*.temp
+*.cache
+.cache/
+tmp/
+temp/
+
+# ============================================================================
+# Database
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================================================
+# Deployment
+# ============================================================================
+.vercel
+.netlify
+.firebase/
+
+# ============================================================================
+# Backup & Old files
+# ============================================================================
+*.bak
+*.backup
+*.old
+*~

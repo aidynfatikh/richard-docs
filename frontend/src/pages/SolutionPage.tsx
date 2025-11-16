@@ -19,6 +19,27 @@ export function SolutionPage() {
   const state = location.state as SolutionPageState | null;
   const [selectedDocIndex, setSelectedDocIndex] = useState(0);
 
+  // Download JSON function
+  const downloadJSON = (data: any, filename: string) => {
+    // Remove base64 images from JSON to keep file size reasonable
+    const cleanData = {
+      ...data,
+      page_image: data.page_image ? '[base64 image data removed]' : undefined,
+      transformed_image: data.transformed_image ? '[base64 image data removed]' : undefined,
+    };
+    
+    const jsonString = JSON.stringify(cleanData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Handle batch results from mobile scanner
   const isBatchMode = state?.batchResults !== undefined;
   const results = isBatchMode
@@ -376,8 +397,24 @@ export function SolutionPage() {
                         )}
 
                         {/* Page Processing Time */}
-                        <div className="text-xs text-center" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-                          Processing Time: {(pageData.meta.page_processing_time_ms || 0).toFixed(0)}ms
+                        <div className="text-xs text-center pt-3 border-t" style={{ borderColor: 'rgba(153, 153, 153, 0.2)', color: 'rgba(153, 153, 153, 1)' }}>
+                          <div className="mb-3">
+                            Processing Time: {(pageData.meta.page_processing_time_ms || 0).toFixed(0)}ms
+                          </div>
+                          <button
+                            onClick={() => downloadJSON(pageData, `${fileName}_page_${pageIndex + 1}_detections.json`)}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
+                            style={{
+                              backgroundColor: 'rgba(0, 23, 255, 0.1)',
+                              color: 'rgba(0, 23, 255, 1)',
+                              border: '1px solid rgba(0, 23, 255, 0.3)'
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Download JSON
+                          </button>
                         </div>
                       </div>
                     ))
@@ -471,7 +508,23 @@ export function SolutionPage() {
 
                       {/* Metadata */}
                       <div className="mt-4 pt-4 border-t text-xs text-center" style={{ borderColor: 'rgba(153, 153, 153, 0.2)', color: 'rgba(153, 153, 153, 1)' }}>
-                        Processing Time: {(result.data.meta.total_processing_time_ms || result.data.meta.page_processing_time_ms || 0).toFixed(0)}ms
+                        <div className="mb-3">
+                          Processing Time: {(result.data.meta.total_processing_time_ms || result.data.meta.page_processing_time_ms || 0).toFixed(0)}ms
+                        </div>
+                        <button
+                          onClick={() => downloadJSON(result.data, `${result.fileName}_detections.json`)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
+                          style={{
+                            backgroundColor: 'rgba(0, 23, 255, 0.1)',
+                            color: 'rgba(0, 23, 255, 1)',
+                            border: '1px solid rgba(0, 23, 255, 0.3)'
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Download JSON
+                        </button>
                       </div>
                     </div>
                   )}
