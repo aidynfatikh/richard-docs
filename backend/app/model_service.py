@@ -20,7 +20,7 @@ class DocumentDetector:
     Includes signature grouping for overlapping detections.
     """
     
-    def __init__(self, model_path=None, confidence_threshold=0.25, device='cpu', 
+    def __init__(self, model_path=None, confidence_threshold=0.15, device='cpu', 
                  enable_grouping=True, group_iou_threshold=0.3, iou_threshold=0.45):
         """
         Initialize the detector.
@@ -52,10 +52,17 @@ class DocumentDetector:
         self.class_names = self.model.names
         print(f"Model loaded. Classes: {self.class_names}")
         if self.enable_grouping:
-            print(f"Signature grouping enabled (IoU threshold: {self.group_iou_threshold})")
+            print(f"Smart grouping enabled (distance: 50px, IoU: {self.group_iou_threshold}, containment: 0.75)")
     
     def _find_best_model(self):
-        """Find the best.pt model in the runs directory."""
+        """Find the best production model."""
+        # Use the best production model (76% mAP@50, 95% signature recall)
+        model_path = Path(__file__).parent.parent.parent / "model" / "runs" / "train" / "yolov11s_lora_20251115_230142" / "weights" / "best.pt"
+        
+        if model_path.exists():
+            return str(model_path)
+        
+        # Fallback: find most recent training run
         model_dir = Path(__file__).parent.parent.parent / "model" / "runs" / "train"
         
         if not model_dir.exists():
@@ -64,7 +71,6 @@ class DocumentDetector:
                 "Please train a model first or specify model_path explicitly."
             )
         
-        # Find most recent training run
         runs = sorted(model_dir.glob("yolov11s_*"), key=os.path.getmtime, reverse=True)
         
         if not runs:
@@ -77,40 +83,76 @@ class DocumentDetector:
         
         return str(best_model)
     
+    def calculate_distance(self, box1: List[float], box2: List[float]) -> float:
+        """Calculate center-to-center distance between two boxes"""
+        x1_center = (box1[0] + box1[2]) / 2
+        y1_center = (box1[1] + box1[3]) / 2
+        x2_center = (box2[0] + box2[2]) / 2
+        y2_center = (box2[1] + box2[3]) / 2
+        
+        return np.sqrt((x1_center - x2_center)**2 + (y1_center - y2_center)**2)
+    
     def calculate_iou(self, box1: List[float], box2: List[float]) -> float:
-        """
-        Calculate IoU (Intersection over Union) between two boxes.
+        """Calculate IoU between two boxes"""
+        x1_max = max(box1[0], box2[0])
+        y1_max = max(box1[1], box2[1])
+        x2_min = min(box1[2], box2[2])
+        y2_min = min(box1[3], box2[3])
         
-        Args:
-            box1: [x1, y1, x2, y2]
-            box2: [x1, y1, x2, y2]
-        
-        Returns:
-            IoU value between 0 and 1
-        """
-        x1_min, y1_min, x1_max, y1_max = box1
-        x2_min, y2_min, x2_max, y2_max = box2
-        
-        # Calculate intersection
-        inter_x_min = max(x1_min, x2_min)
-        inter_y_min = max(y1_min, y2_min)
-        inter_x_max = min(x1_max, x2_max)
-        inter_y_max = min(y1_max, y2_max)
-        
-        if inter_x_max < inter_x_min or inter_y_max < inter_y_min:
+        if x2_min < x1_max or y2_min < y1_max:
             return 0.0
         
-        inter_area = (inter_x_max - inter_x_min) * (inter_y_max - inter_y_min)
-        box1_area = (x1_max - x1_min) * (y1_max - y1_min)
-        box2_area = (x2_max - x2_min) * (y2_max - y2_min)
-        union_area = box1_area + box2_area - inter_area
+        intersection = (x2_min - x1_max) * (y2_min - y1_max)
         
-        return inter_area / union_area if union_area > 0 else 0.0
+        area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+        area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+        union = area1 + area2 - intersection
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def calculate_containment(self, box1: List[float], box2: List[float]) -> float:
+        """Calculate how much box1 is contained within box2 (0.0 to 1.0)"""
+        x1_max = max(box1[0], box2[0])
+        y1_max = max(box1[1], box2[1])
+        x2_min = min(box1[2], box2[2])
+        y2_min = min(box1[3], box2[3])
+        
+        if x2_min < x1_max or y2_min < y1_max:
+            return 0.0
+        
+        intersection = (x2_min - x1_max) * (y2_min - y1_max)
+        area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+        
+        return intersection / area1 if area1 > 0 else 0.0
+    
+    def boxes_are_close(self, box1: Dict, box2: Dict, distance_threshold: float = 50) -> bool:
+        """Check if two boxes should be grouped together"""
+        
+        # Calculate distance between centers
+        distance = self.calculate_distance(box1['box'], box2['box'])
+        
+        # Calculate IoU
+        iou = self.calculate_iou(box1['box'], box2['box'])
+        
+        # Calculate containment (for signatures inside other signatures)
+        containment1 = self.calculate_containment(box1['box'], box2['box'])
+        containment2 = self.calculate_containment(box2['box'], box1['box'])
+        max_containment = max(containment1, containment2)
+        
+        # Group if:
+        # 1. Close enough (centers nearby)
+        # 2. Overlapping enough (IoU)
+        # 3. One box is mostly inside another (>60% containment - catches partial detections)
+        return (distance < distance_threshold or 
+                iou > self.group_iou_threshold or 
+                max_containment > 0.6)
     
     def group_detections(self, detections: List[Dict]) -> List[Dict]:
         """
-        Group closely stacked detections (especially signatures).
-        Multiple overlapping boxes of the same class are merged into one.
+        Group nearby/overlapping detections of the SAME CLASS into unified detections.
+        Uses two-pass strategy matching production inference.py:
+        1. First pass: Remove boxes almost completely inside other boxes (duplicates)
+        2. Second pass: Merge remaining nearby/overlapping boxes
         
         Args:
             detections: List of detection dictionaries
@@ -121,89 +163,103 @@ class DocumentDetector:
         if not self.enable_grouping or not detections:
             return detections
         
-        # Separate by class
+        # Group by class
         by_class = {}
         for det in detections:
-            cls_name = det['class_name']
-            if cls_name not in by_class:
-                by_class[cls_name] = []
-            by_class[cls_name].append(det)
-        
-        grouped_detections = []
+            class_id = det['class_id']
+            if class_id not in by_class:
+                by_class[class_id] = []
+            by_class[class_id].append(det)
         
         # Process each class separately
-        for cls_name, dets in by_class.items():
-            # Only group signatures (they tend to have multiple overlapping boxes)
-            if cls_name != 'signature':
-                grouped_detections.extend(dets)
-                continue
-            
-            if len(dets) <= 1:
-                grouped_detections.extend(dets)
-                continue
-            
-            # Build connectivity graph
-            n = len(dets)
-            graph = {i: set() for i in range(n)}
-            
-            for i in range(n):
-                for j in range(i + 1, n):
-                    iou = self.calculate_iou(dets[i]['box'], dets[j]['box'])
-                    if iou >= self.group_iou_threshold:
-                        graph[i].add(j)
-                        graph[j].add(i)
-            
-            # Find connected components using DFS
-            visited = set()
-            components = []
-            
-            def dfs(node: int, component: Set[int]):
-                if node in visited:
-                    return
-                visited.add(node)
-                component.add(node)
-                for neighbor in graph[node]:
-                    dfs(neighbor, component)
-            
-            for i in range(n):
-                if i not in visited:
-                    component = set()
-                    dfs(i, component)
-                    components.append(component)
-            
-            # Merge detections in each component
-            for component in components:
-                if len(component) == 1:
-                    # Single detection, keep as is
-                    idx = list(component)[0]
-                    grouped_detections.append(dets[idx])
-                else:
-                    # Multiple detections, merge them
-                    indices = list(component)
-                    boxes = [dets[i]['box'] for i in indices]
-                    confidences = [dets[i]['confidence'] for i in indices]
-                    
-                    # Calculate bounding box that fits all
-                    x1_min = min(box[0] for box in boxes)
-                    y1_min = min(box[1] for box in boxes)
-                    x2_max = max(box[2] for box in boxes)
-                    y2_max = max(box[3] for box in boxes)
-                    
-                    # Use maximum confidence
-                    max_conf = max(confidences)
-                    
-                    # Create merged detection
-                    merged = {
-                        'box': [x1_min, y1_min, x2_max, y2_max],
-                        'confidence': max_conf,
-                        'class_id': dets[indices[0]]['class_id'],
-                        'class_name': cls_name,
-                        'grouped': True,
-                        'group_count': len(component)
-                    }
-                    grouped_detections.append(merged)
+        merged_detections = []
         
-        return grouped_detections
+        for class_id, class_detections in by_class.items():
+            # Sort by confidence (highest first) then by area (largest first)
+            class_detections = sorted(class_detections, 
+                                     key=lambda x: (x['confidence'], 
+                                                  (x['box'][2]-x['box'][0])*(x['box'][3]-x['box'][1])), 
+                                     reverse=True)
+            
+            # PASS 1: Remove boxes that are almost completely inside other boxes
+            kept_detections = []
+            for i, det1 in enumerate(class_detections):
+                is_redundant = False
+                
+                for j, det2 in enumerate(class_detections):
+                    if i == j:
+                        continue
+                    
+                    containment = self.calculate_containment(det1['box'], det2['box'])
+                    
+                    # If >75% of this box is inside another box, check which one to keep
+                    if containment > 0.75:
+                        if det2['confidence'] > det1['confidence']:
+                            is_redundant = True
+                            break
+                        elif det2['confidence'] == det1['confidence']:
+                            # Same confidence - keep larger box
+                            area1 = (det1['box'][2] - det1['box'][0]) * (det1['box'][3] - det1['box'][1])
+                            area2 = (det2['box'][2] - det2['box'][0]) * (det2['box'][3] - det2['box'][1])
+                            if area2 > area1:
+                                is_redundant = True
+                                break
+                
+                if not is_redundant:
+                    kept_detections.append(det1)
+            
+            # PASS 2: Merge remaining nearby/overlapping boxes
+            assigned = set()
+            
+            for i, det1 in enumerate(kept_detections):
+                if i in assigned:
+                    continue
+                
+                # Start new group for this detection
+                group = [det1]
+                assigned.add(i)
+                
+                # Find all same-class detections that overlap/are close to this one
+                for j, det2 in enumerate(kept_detections):
+                    if j in assigned:
+                        continue
+                    
+                    # Check if det2 should be grouped with any detection in current group
+                    should_group = False
+                    for group_det in group:
+                        if self.boxes_are_close(group_det, det2, distance_threshold=50):
+                            should_group = True
+                            break
+                    
+                    if should_group:
+                        group.append(det2)
+                        assigned.add(j)
+                
+                # Merge group into single detection
+                if len(group) == 1:
+                    # Single detection, keep as-is
+                    merged_detections.append(group[0])
+                else:
+                    # Multiple overlapping detections - merge into one
+                    all_boxes = [d['box'] for d in group]
+                    x1 = min(box[0] for box in all_boxes)
+                    y1 = min(box[1] for box in all_boxes)
+                    x2 = max(box[2] for box in all_boxes)
+                    y2 = max(box[3] for box in all_boxes)
+                    
+                    # Use highest confidence
+                    max_conf = max(d['confidence'] for d in group)
+                    
+                    merged_detections.append({
+                        'class_id': class_id,
+                        'class_name': det1['class_name'],
+                        'confidence': max_conf,
+                        'box': [x1, y1, x2, y2],
+                        'grouped': True,
+                        'group_count': len(group)
+                    })
+        
+        return merged_detections
     
     def detect(self, image, iou_threshold=None, image_size=640):
         """
@@ -416,7 +472,14 @@ class RealTimeDetector:
         print(f"Real-Time model loaded. Classes: {self.class_names}")
 
     def _find_best_model(self):
-        """Find the best.pt model in the runs directory."""
+        """Find the best production model."""
+        # Use the best production model (76% mAP@50, 95% signature recall)
+        model_path = Path(__file__).parent.parent.parent / "model" / "runs" / "train" / "yolov11s_lora_20251115_230142" / "weights" / "best.pt"
+        
+        if model_path.exists():
+            return str(model_path)
+        
+        # Fallback: find most recent training run
         model_dir = Path(__file__).parent.parent.parent / "model" / "runs" / "train"
 
         if not model_dir.exists():
@@ -425,7 +488,6 @@ class RealTimeDetector:
                 "Please train a model first or specify model_path explicitly."
             )
 
-        # Find most recent training run
         runs = sorted(model_dir.glob("yolov11s_*"), key=os.path.getmtime, reverse=True)
 
         if not runs:

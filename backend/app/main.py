@@ -49,11 +49,11 @@ async def startup_event():
     try:
         print("Initializing document detector...")
         detector = get_detector(
-            model_path=None,  # Auto-finds best model
+            model_path=None,  # Auto-finds best model (yolov11s_lora_20251115_230142)
             confidence_threshold=0.25,
             device='cpu',  # Change to 'cuda' or '0' if GPU available
-            enable_grouping=True,  # Enable signature grouping
-            group_iou_threshold=0.3  # IoU threshold for grouping
+            enable_grouping=True,  # Enable smart grouping (distance + IoU + containment)
+            group_iou_threshold=0.2  # IoU threshold for grouping (matches inference.py)
         )
         print("✓ Model loaded successfully")
 
@@ -597,18 +597,14 @@ async def process_single_file_batch(
         # Handle PDFs with multi-page support
         if format_info['is_pdf']:
             try:
-                pages_data = processor.process_pdf_bytes(contents)
+                pages_data = processor.pdf_to_images(contents)
                 
-                # Process each page in parallel
+                # Process each page
                 page_results = []
-                for page_num, page_data in enumerate(pages_data):
-                    img = cv2.imdecode(
-                        np.frombuffer(base64.b64decode(page_data['image'].split(',')[1]), np.uint8),
-                        cv2.IMREAD_COLOR
-                    )
+                for img, page_num, base64_img in pages_data:
                     detection_result = detector.detect(img)
-                    detection_result['page_number'] = page_num + 1
-                    detection_result['annotated_image'] = page_data['image']
+                    detection_result['page_number'] = page_num
+                    detection_result['page_image'] = base64_img
                     page_results.append(detection_result)
                 
                 # Aggregate summary

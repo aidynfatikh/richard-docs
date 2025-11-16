@@ -1,0 +1,15 @@
+Metric Type,Metric Name,Value
+Detection,Precision,0.8808
+Detection,Recall,0.7612
+Detection,mAP@50,0.8739
+Detection,mAP@50-95,0.6323
+Segmentation,mAP@50,0.8472
+Segmentation,mAP@50-95,0.4868
+Loss,Box Loss,0.0000
+Loss,Seg Loss,0.0000
+Loss,Cls Loss,0.0000
+Loss,DFL Loss,0.0000
+
+Per-Class Metrics,,
+Class,stamp,ID: 0
+Class,signature,ID: 1

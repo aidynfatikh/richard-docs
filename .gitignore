@@ -69,30 +69,25 @@ lerna-debug.log*
 # Machine Learning / Model
 # ============================================================================
 
-# Dataset directories
-model/raw_data/images/
-model/dataset/
-model/digital_inspector_dataset/
-model/raw_data/
-model/raw_data/pdfs/
-model/dataset_overlap/
+# Data directories
+model/data/raw/
+model/data/datasets/
+model/data/test/
 
-# Training runs - keep only best.pt and last.pt
-model/runs/
-!model/runs/**/
-!model/runs/**/weights/
-model/runs/**/weights/*
-!model/runs/**/weights/best.pt
-!model/runs/**/weights/last.pt
+# Output directories
+model/outputs/
 
-# YOLO model weights (download if needed)
-yolo11*.pt
-yolov*.pt
-*.weights
+# Training runs - keep only the production model used in inference.py
+model/runs/train/
+!model/runs/train/yolov11s_lora_20251115_230142/
+!model/runs/train/yolov11s_lora_20251115_230142/weights/
+!model/runs/train/yolov11s_lora_20251115_230142/weights/best.pt
 
-# Inference results (optional - remove if you want to keep)
-model/inference_results/*.jpg
-model/inference_results/*.png
+
+# YOLO base model weights (gitignored - download if needed)
+model/weights/yolo11*.pt
+model/weights/yolov*.pt
+model/weights/*.weights
 
 # ============================================================================
 # Documents & Large Files
