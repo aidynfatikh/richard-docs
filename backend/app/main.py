@@ -1667,6 +1667,14 @@ async def websocket_detect(websocket: WebSocket):
     """
     WebSocket endpoint for real-time video stream detection.
 
+    **HIGH QUALITY MODE**: Uses the same detector as batch endpoints with:
+    - Image size: 1024px (same as /batch-detect-hq)
+    - IoU threshold: 0.45 (same as /detect)
+    - Smart signature grouping enabled
+    - Full detection pipeline for maximum accuracy
+
+    Performance: ~2-5 FPS on CPU (prioritizes accuracy over speed)
+
     Protocol:
     - Client sends: Base64-encoded JPEG frames
     - Server responds: JSON with detections, counts, and performance metrics
@@ -1674,18 +1682,25 @@ async def websocket_detect(websocket: WebSocket):
     Message Format:
     Client -> Server: {"frame": "base64_encoded_jpeg_string"}
     Server -> Client: {
-        "detections": [...],
-        "counts": {"stamp": 0, "signature": 0, "qr": 0},
-        "image_size": {"width": 640, "height": 480},
-        "inference_time_ms": 123.45
+        "stamps": [...],
+        "signatures": [...],
+        "qrs": [...],
+        "summary": {"total_stamps": 0, "total_signatures": 0, "total_qrs": 0},
+        "image_size": {"width_px": 640, "height_px": 480},
+        "classification": {...},
+        "meta": {
+            "inference_time_ms": 123.45,
+            "quality_mode": "high_quality_1024px",
+            "detector_type": "main_batch_detector"
+        }
     }
     """
     await websocket.accept()
-    print("[WebSocket] Client connected")
+    print("[WebSocket HQ] Client connected - HIGH QUALITY MODE (1024px)")
 
-    if realtime_detector is None:
+    if detector is None:
         await websocket.send_json({
-            "error": "Real-time detector not initialized",
+            "error": "Detector not initialized",
             "message": "Server is still starting up. Please wait and reconnect."
         })
         await websocket.close()
@@ -1749,45 +1764,31 @@ async def websocket_detect(websocket: WebSocket):
                 is_camera, classification_info = is_document_photo(img_bytes)
                 classification_time = (time.time() - classification_start) * 1000
 
-                # Run detection
-                detection_result = realtime_detector.detect_frame(frame)
+                # Run detection using MAIN DETECTOR (high quality, same as batch endpoints)
+                # Use detector.detect() instead of realtime_detector for better accuracy
+                detection_start = time.time()
+                detection_result = await asyncio.to_thread(
+                    detector.detect,
+                    frame,
+                    iou_threshold=0.45,  # Match batch detector settings
+                    image_size=1024      # HIGH QUALITY - match batch-detect-hq
+                )
+                detection_time = (time.time() - detection_start) * 1000
 
-                # Transform coordinates into categorized format like /detect
-                stamps = []
-                signatures = []
-                qrs = []
-
-                for det in detection_result["coordinates"]:
-                    class_name = det["class"]
-                    bbox = [
-                        det["coordinates"]["x1"],
-                        det["coordinates"]["y1"],
-                        det["coordinates"]["x2"],
-                        det["coordinates"]["y2"]
-                    ]
-
-                    detection_obj = {
-                        "bbox": bbox,
-                        "confidence": det["confidence"],
-                        "class_name": class_name
-                    }
-
-                    # Add grouping metadata if available
-                    if det.get("grouped", False):
-                        detection_obj["grouped"] = True
-                        detection_obj["group_count"] = det.get("group_count", 1)
-
-                    # Categorize by type
-                    if class_name == "stamp":
-                        stamps.append(detection_obj)
-                    elif class_name == "signature":
-                        signatures.append(detection_obj)
-                    elif class_name == "qr":
-                        qrs.append(detection_obj)
+                # detector.detect() already returns categorized format
+                # Extract stamps, signatures, qrs directly
+                stamps = detection_result.get("stamps", [])
+                signatures = detection_result.get("signatures", [])
+                qrs = detection_result.get("qrs", [])
 
                 # Build response matching /detect format
+                # Extract image size and convert to frontend-compatible format
+                img_size = detection_result["image_size"]
                 result = {
-                    "image_size": detection_result["image_size"],
+                    "image_size": {
+                        "width": img_size["width_px"],
+                        "height": img_size["height_px"]
+                    },
                     "stamps": stamps,
                     "signatures": signatures,
                     "qrs": qrs,
@@ -1809,15 +1810,17 @@ async def websocket_detect(websocket: WebSocket):
 
                 # Track performance metrics
                 frame_count += 1
-                total_inference_time += detection_result["inference_time_ms"]
+                total_inference_time += detection_time
                 avg_inference_time = total_inference_time / frame_count
 
                 # Add performance metrics to response
                 result["meta"] = {
                     "frame_count": frame_count,
                     "avg_inference_time_ms": round(avg_inference_time, 2),
-                    "inference_time_ms": detection_result["inference_time_ms"],
-                    "total_processing_time_ms": round(detection_result["inference_time_ms"] + classification_time, 2)
+                    "inference_time_ms": round(detection_time, 2),
+                    "total_processing_time_ms": round(detection_time + classification_time, 2),
+                    "quality_mode": "high_quality_1024px",  # Indicate using high quality detector
+                    "detector_type": "main_batch_detector"  # Using same detector as batch endpoints
                 }
 
                 # Send results back to client
@@ -1827,12 +1830,13 @@ async def websocket_detect(websocket: WebSocket):
                 if frame_count % 10 == 0:
                     fps = 1000 / avg_inference_time if avg_inference_time > 0 else 0
                     total_dets = result['summary']['total_detections']
-                    print(f"[WebSocket] Frame {frame_count}: "
+                    print(f"[WebSocket HQ] Frame {frame_count}: "
                           f"{total_dets} detections "
                           f"(stamps: {len(stamps)}, sigs: {len(signatures)}, qrs: {len(qrs)}), "
-                          f"{detection_result['inference_time_ms']:.1f}ms, "
+                          f"{detection_time:.1f}ms, "
                           f"avg FPS: {fps:.1f}, "
-                          f"camera: {is_camera}")
+                          f"camera: {is_camera}, "
+                          f"mode: HIGH_QUALITY_1024px")
 
             except Exception as e:
                 print(f"[WebSocket] Detection error: {e}")
