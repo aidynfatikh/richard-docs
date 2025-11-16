@@ -26,10 +26,12 @@ app = FastAPI(
 # Add CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers including ngrok-skip-browser-warning
+    expose_headers=["*"],  # Expose all response headers
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Initialize services on startup
