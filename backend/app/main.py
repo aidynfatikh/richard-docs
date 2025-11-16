@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import cv2
 import numpy as np
 import uvicorn
@@ -28,13 +29,30 @@ app = FastAPI(
 # Add CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=[
+        "*",  # Allow all origins for development
+        "https://docs.richardsai.tech",  # Production frontend
+        "http://localhost:5173",  # Local Vite dev server
+        "http://localhost:3000",  # Alternative local port
+    ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Allow all headers including ngrok-skip-browser-warning
     expose_headers=["*"],  # Expose all response headers
     max_age=3600,  # Cache preflight requests for 1 hour
 )
+
+# Middleware to add CORS headers for ngrok
+class NgrokCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Expose-Headers"] = "*"
+        return response
+
+app.add_middleware(NgrokCORSMiddleware)
 
 # Initialize services on startup
 detector = None
