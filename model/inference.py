@@ -252,13 +252,19 @@ def group_detections(detections: List[Dict],
 # INFERENCE
 # ============================================================================
 
-def run_inference(image_path: Path, model, config: InferenceConfig) -> Tuple[List[Dict], List[Dict]]:
+def run_inference(image_path: Path, model, config: InferenceConfig) -> Tuple[List[Dict], List[Dict], Tuple[int, int]]:
     """
     Run inference on a single image.
     
     Returns:
-        (raw_detections, merged_detections)
+        (raw_detections, merged_detections, image_size)
     """
+    
+    # Get image size
+    img = cv2.imread(str(image_path))
+    if img is None:
+        raise ValueError(f"Could not read image: {image_path}")
+    img_height, img_width = img.shape[:2]
     
     # Run model
     results = model(str(image_path), conf=config.CONF_THRESHOLD, iou=config.IOU_THRESHOLD, verbose=False)
@@ -286,7 +292,7 @@ def run_inference(image_path: Path, model, config: InferenceConfig) -> Tuple[Lis
         iou_threshold=config.GROUP_IOU_THRESHOLD
     )
     
-    return raw_detections, merged_detections
+    return raw_detections, merged_detections, (img_width, img_height)
 
 
 def visualize_results(image_path: Path, 
@@ -405,35 +411,82 @@ def main():
     print("=" * 80)
     
     # Process each image
-    all_results = []
+    all_results = {}
+    annotation_counter = 0
     
     for i, img_path in enumerate(image_files, 1):
         print(f"[{i}/{len(image_files)}] {img_path.name}")
         
         try:
             # Run inference
-            raw_detections, merged_detections = run_inference(img_path, model, config)
+            raw_detections, merged_detections, img_size = run_inference(img_path, model, config)
             
-            # Save results
-            result = {
-                'image': img_path.name,
-                'raw_detections': raw_detections,
-                'merged_detections': merged_detections,
-                'summary': {
-                    'raw_count': len(raw_detections),
-                    'merged_count': len(merged_detections),
-                    'qr_count': sum(1 for d in merged_detections if d['class_id'] == 0),
-                    'signature_count': sum(1 for d in merged_detections if d['class_id'] == 1),
-                    'stamp_count': sum(1 for d in merged_detections if d['class_id'] == 2)
+            # Format detections in required format
+            annotations = []
+            for det in merged_detections:
+                annotation_counter += 1
+                x1, y1, x2, y2 = det['box']
+                width = x2 - x1
+                height = y2 - y1
+                area = width * height
+                
+                annotations.append({
+                    f"annotation_{annotation_counter}": {
+                        "category": det['class_name'],
+                        "bbox": {
+                            "x": int(x1),
+                            "y": int(y1),
+                            "width": int(width),
+                            "height": int(height)
+                        },
+                        "area": float(area),
+                        "confidence": round(det['confidence'], 3)
+                    }
+                })
+            
+            # Parse filename to extract PDF name and page number
+            file_name = img_path.name
+            
+            # Check if filename has _page_N pattern (multi-page PDF)
+            if '_page_' in file_name:
+                # Extract PDF name and page number
+                # Example: "локалсмета-_page_3.png" -> ("локалсмета-.pdf", "page_3")
+                base_name = file_name.rsplit('_page_', 1)[0]
+                page_num = file_name.rsplit('_page_', 1)[1].replace('.png', '')
+                pdf_name = base_name + '.pdf'
+                page_key = f"page_{page_num}"
+            else:
+                # Single page PDF - use original name
+                # Example: "письмо-2.png" -> ("письмо-2.pdf", "page_1")
+                pdf_name = file_name.replace('.png', '.pdf').replace('.jpg', '.pdf').replace('.jpeg', '.pdf')
+                page_key = "page_1"
+            
+            # Group by PDF name
+            if pdf_name not in all_results:
+                all_results[pdf_name] = {}
+            
+            all_results[pdf_name][page_key] = {
+                "annotations": annotations,
+                "page_size": {
+                    "width": img_size[0],
+                    "height": img_size[1]
                 }
             }
-            all_results.append(result)
+            
+            # Track summary for console output
+            summary = {
+                'raw_count': len(raw_detections),
+                'merged_count': len(merged_detections),
+                'qr_count': sum(1 for d in merged_detections if d['class_id'] == 0),
+                'signature_count': sum(1 for d in merged_detections if d['class_id'] == 1),
+                'stamp_count': sum(1 for d in merged_detections if d['class_id'] == 2)
+            }
             
             # Print summary
-            print(f"  Raw: {result['summary']['raw_count']} → Merged: {result['summary']['merged_count']} "
-                  f"(QR:{result['summary']['qr_count']}, "
-                  f"Sig:{result['summary']['signature_count']}, "
-                  f"Stamp:{result['summary']['stamp_count']})")
+            print(f"  Raw: {summary['raw_count']} → Merged: {summary['merged_count']} "
+                  f"(QR:{summary['qr_count']}, "
+                  f"Sig:{summary['signature_count']}, "
+                  f"Stamp:{summary['stamp_count']})")
             
             # Visualize
             vis_path = vis_dir / img_path.name
@@ -441,32 +494,44 @@ def main():
             
         except Exception as e:
             print(f"  ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
-    # Save JSON results
+    # Save JSON results in required format
     json_path = output_dir / "results.json"
-    with open(json_path, 'w') as f:
-        json.dump({
-            'timestamp': datetime.now().isoformat(),
-            'model': config.MODEL_PATH,
-            'config': {
-                'conf_threshold': config.CONF_THRESHOLD,
-                'group_distance': config.GROUP_DISTANCE_THRESHOLD,
-                'group_iou': config.GROUP_IOU_THRESHOLD
-            },
-            'results': all_results
-        }, f, indent=2)
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, indent=2, ensure_ascii=False)
+    
+    # Calculate summary statistics
+    total_annotations = 0
+    total_qr = 0
+    total_signatures = 0
+    total_stamps = 0
+    
+    for file_name, file_data in all_results.items():
+        for page_key, page_data in file_data.items():
+            annotations = page_data.get('annotations', [])
+            total_annotations += len(annotations)
+            for ann in annotations:
+                for ann_key, ann_data in ann.items():
+                    category = ann_data.get('category', '')
+                    if category == 'qr':
+                        total_qr += 1
+                    elif category == 'signature':
+                        total_signatures += 1
+                    elif category == 'stamp':
+                        total_stamps += 1
     
     # Summary
     print("\n" + "=" * 80)
     print("✅ INFERENCE COMPLETE")
     print("=" * 80)
     print(f"\nProcessed: {len(all_results)} images")
-    print(f"Raw detections: {sum(r['summary']['raw_count'] for r in all_results)}")
-    print(f"Merged detections: {sum(r['summary']['merged_count'] for r in all_results)}")
-    print(f"  QR codes: {sum(r['summary']['qr_count'] for r in all_results)}")
-    print(f"  Signatures: {sum(r['summary']['signature_count'] for r in all_results)}")
-    print(f"  Stamps: {sum(r['summary']['stamp_count'] for r in all_results)}")
+    print(f"Total annotations: {total_annotations}")
+    print(f"  QR codes: {total_qr}")
+    print(f"  Signatures: {total_signatures}")
+    print(f"  Stamps: {total_stamps}")
     print(f"\nOutputs:")
     print(f"  Results JSON: {json_path}")
     print(f"  Visualizations: {vis_dir}")
