@@ -106,14 +106,30 @@ export function SolutionPage() {
     const results = state?.results || [];
     if (selectedDocIndex < results.length - 1) {
       setSelectedDocIndex(prev => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Scroll to show Documents section in bottom half of screen
+      setTimeout(() => {
+        const documentsSection = document.querySelector('h2');
+        if (documentsSection) {
+          const elementTop = documentsSection.getBoundingClientRect().top + window.scrollY;
+          const offset = window.innerHeight / 2 - 600; // Scroll much more down
+          window.scrollTo({ top: elementTop - offset, behavior: 'smooth' });
+        }
+      }, 50);
     }
   };
 
   const goToPreviousFile = () => {
     if (selectedDocIndex > 0) {
       setSelectedDocIndex(prev => prev - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Scroll to show Documents section in bottom half of screen
+      setTimeout(() => {
+        const documentsSection = document.querySelector('h2');
+        if (documentsSection) {
+          const elementTop = documentsSection.getBoundingClientRect().top + window.scrollY;
+          const offset = window.innerHeight / 2 - 600; // Scroll much more down
+          window.scrollTo({ top: elementTop - offset, behavior: 'smooth' });
+        }
+      }, 50);
     }
   };
 
@@ -603,59 +619,20 @@ export function SolutionPage() {
                         <div className="mb-3">
                           Processing Time: {(result.data.meta.total_processing_time_ms || result.data.meta.page_processing_time_ms || 0).toFixed(0)}ms
                         </div>
-                        <div className="flex items-center justify-center gap-3">
-                          <button
-                            onClick={() => downloadJSON(result.data, `${result.fileName}_detections.json`)}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
-                            style={{
-                              backgroundColor: 'rgba(0, 23, 255, 0.1)',
-                              color: 'rgba(0, 23, 255, 1)',
-                              border: '1px solid rgba(0, 23, 255, 0.3)'
-                            }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            Download JSON
-                          </button>
-                          {results.length > 1 && (
-                            <>
-                              <button
-                                onClick={goToPreviousFile}
-                                disabled={selectedDocIndex === 0}
-                                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                                style={{
-                                  backgroundColor: 'rgba(153, 153, 153, 0.1)',
-                                  color: 'rgba(153, 153, 153, 1)',
-                                  border: '1px solid rgba(153, 153, 153, 0.3)'
-                                }}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                </svg>
-                                Previous
-                              </button>
-                              <span className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>
-                                {selectedDocIndex + 1} / {results.length}
-                              </span>
-                              <button
-                                onClick={goToNextFile}
-                                disabled={selectedDocIndex === results.length - 1}
-                                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                                style={{
-                                  backgroundColor: 'rgba(153, 153, 153, 0.1)',
-                                  color: 'rgba(153, 153, 153, 1)',
-                                  border: '1px solid rgba(153, 153, 153, 0.3)'
-                                }}
-                              >
-                                Next
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        <button
+                          onClick={() => downloadJSON(result.data, `${result.fileName}_detections.json`)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
+                          style={{
+                            backgroundColor: 'rgba(0, 23, 255, 0.1)',
+                            color: 'rgba(0, 23, 255, 1)',
+                            border: '1px solid rgba(0, 23, 255, 0.3)'
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Download JSON
+                        </button>
                       </div>
                     </div>
                   )}
