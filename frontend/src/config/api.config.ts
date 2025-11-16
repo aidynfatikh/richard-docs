@@ -15,6 +15,7 @@ export const API_CONFIG = {
     HEALTH: '/health',
     SCAN_DOCUMENT: '/scan-document',
     BATCH_DETECT: '/batch-detect',
+    BATCH_DETECT_HQ: '/batch-detect-hq', // High-quality mode (slower but more accurate)
   },
   
   // Request timeout in milliseconds

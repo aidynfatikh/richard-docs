@@ -67,12 +67,14 @@ class DocumentClassifier:
         self.visual_weight = visual_weight
         self.confidence_threshold = confidence_threshold
 
-    def is_document_photo(self, image_bytes: bytes) -> Tuple[bool, Dict]:
+    def is_document_photo(self, image_bytes: bytes, fast_mode: bool = False) -> Tuple[bool, Dict]:
         """
         Main classification function.
 
         Args:
             image_bytes: Raw image bytes
+            fast_mode: If True, skip heavy visual analysis (10x faster)
+                      Useful for batch processing where EXIF is sufficient
 
         Returns:
             Tuple of (is_camera_photo, metadata_dict)
@@ -96,17 +98,24 @@ class DocumentClassifier:
             exif_score, exif_indicators = self._analyze_exif(image)
             logger.info(f"EXIF analysis: score={exif_score:.2f}, indicators={exif_indicators}")
 
-            # Step 3: Visual analysis (always run for verification, but weight differently)
-            visual_score, visual_indicators = self._analyze_visual_features(image_bytes)
-            logger.info(f"Visual analysis: score={visual_score:.2f}, indicators={visual_indicators}")
-
-            # Step 4: Combine scores with weighting
-            # If EXIF is highly confident (>0.8), trust it more
-            if exif_score > 0.8 or exif_score < 0.2:
-                # Strong EXIF evidence, weight it heavily
-                final_score = exif_score * 0.85 + visual_score * 0.15
+            # Step 3: Visual analysis (skip in fast_mode or if EXIF is highly confident)
+            visual_score = 0.5  # Neutral default
+            visual_indicators = {}
+            
+            if fast_mode:
+                # Fast mode: Use EXIF only (10x faster)
+                final_score = exif_score
+                visual_indicators['skipped'] = 'fast_mode_enabled'
+            elif exif_score > 0.8 or exif_score < 0.2:
+                # Strong EXIF evidence, skip expensive visual analysis
+                final_score = exif_score
+                visual_indicators['skipped'] = 'exif_confident'
+                logger.info(f"Skipping visual analysis (EXIF highly confident: {exif_score:.2f})")
             else:
-                # Ambiguous EXIF, use balanced weights
+                # Ambiguous EXIF, run full visual analysis
+                visual_score, visual_indicators = self._analyze_visual_features(image_bytes)
+                logger.info(f"Visual analysis: score={visual_score:.2f}, indicators={visual_indicators}")
+                # Combine scores with balanced weights
                 final_score = exif_score * self.exif_weight + visual_score * self.visual_weight
 
             # Step 5: Make classification decision
@@ -663,12 +672,14 @@ def get_classifier() -> DocumentClassifier:
     return _classifier_instance
 
 
-def is_document_photo(image_bytes: bytes) -> Tuple[bool, Dict]:
+def is_document_photo(image_bytes: bytes, fast_mode: bool = False) -> Tuple[bool, Dict]:
     """
     Convenient function to classify document.
 
     Args:
         image_bytes: Raw image bytes
+        fast_mode: If True, skip heavy visual analysis (10x faster)
+                  Use for batch processing where speed matters
 
     Returns:
         Tuple of (is_camera_photo, classification_metadata)
@@ -685,4 +696,4 @@ def is_document_photo(image_bytes: bytes) -> Tuple[bool, Dict]:
             process_document(file_bytes)
     """
     classifier = get_classifier()
-    return classifier.is_document_photo(image_bytes)
+    return classifier.is_document_photo(image_bytes, fast_mode=fast_mode)

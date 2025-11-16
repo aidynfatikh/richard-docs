@@ -81,6 +81,8 @@ export function HackathonHero() {
     setFiles([]);
   };
 
+  const [useHighQuality, setUseHighQuality] = useState(false);
+
   const handleInspect = async () => {
     setError('');
     
@@ -93,16 +95,25 @@ export function HackathonHero() {
     setProgress({ current: 0, total: files.length });
 
     try {
-      // Use batch endpoint for optimal performance (handles 1000+ files)
-      const batchResult = await apiService.batchDetect(
-        files,
-        0.25,
-        (current, total) => {
-          setProgress({ current, total });
-        },
-        100, // chunk size
-        10   // max parallel workers
-      );
+      // Use selected quality mode
+      const batchResult = useHighQuality
+        ? await apiService.batchDetectHighQuality(
+            files,
+            0.15,
+            (current, total) => {
+              setProgress({ current, total });
+            },
+            10  // max parallel workers
+          )
+        : await apiService.batchDetect(
+            files,
+            0.15,
+            (current, total) => {
+              setProgress({ current, total });
+            },
+            100, // chunk size
+            10   // max parallel workers
+          );
 
       if (!batchResult.success || !batchResult.data) {
         throw new Error(batchResult.error?.detail || 'Batch processing failed');
@@ -300,27 +311,47 @@ export function HackathonHero() {
                       Clear All
                     </button>
                   </div>
-                  <button
-                    onClick={handleInspect}
-                    disabled={isProcessing}
-                    className="w-full sm:w-auto px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 mr-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: 'rgba(0, 23, 255, 1)',
-                      color: 'rgba(255, 255, 255, 1)'
-                    }}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      'Analyze Documents'
-                    )}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* Quality Toggle */}
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={useHighQuality}
+                        onChange={(e) => setUseHighQuality(e.target.checked)}
+                        disabled={isProcessing}
+                        className="sr-only"
+                      />
+                      <div className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        style={{ backgroundColor: useHighQuality ? 'rgba(0, 23, 255, 1)' : 'rgba(153, 153, 153, 0.3)' }}
+                      >
+                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${useHighQuality ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: 'rgba(247, 247, 248, 1)' }} title={useHighQuality ? 'High quality mode: Full classification + 1024px resolution (slower)' : 'Fast mode: EXIF-only + 640px resolution (faster)'}>
+                        {useHighQuality ? '🎯 High Quality' : '⚡ Fast Mode'}
+                      </span>
+                    </label>
+                    <button
+                      onClick={handleInspect}
+                      disabled={isProcessing}
+                      className="px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: 'rgba(0, 23, 255, 1)',
+                        color: 'rgba(255, 255, 255, 1)'
+                      }}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Processing...
+                        </>
+                      ) : (
+                        'Analyze Documents'
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-40 overflow-y-auto space-y-2" style={{
                   scrollbarWidth: 'thin',
