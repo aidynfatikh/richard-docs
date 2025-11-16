@@ -29,11 +29,11 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create model directory structure
-RUN mkdir -p /app/model/runs/train/yolov11s_lora_20251115_180118/weights
+RUN mkdir -p /app/model/runs/train/yolov11s_lora_20251115_230142/weights
 
 # Copy model weights into the image
-COPY model/runs/train/yolov11s_lora_20251115_180118/weights/best.pt \
-     /app/model/runs/train/yolov11s_lora_20251115_180118/weights/best.pt
+COPY model/runs/train/yolov11s_lora_20251115_230142/weights/best.pt \
+     /app/model/runs/train/yolov11s_lora_20251115_230142/weights/best.pt
 
 # Copy application code
 COPY backend/app/ /app/app/

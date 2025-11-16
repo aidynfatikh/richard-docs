@@ -83,6 +83,7 @@ model/runs/train/
 !model/runs/train/yolov11s_lora_20251115_230142/weights/
 !model/runs/train/yolov11s_lora_20251115_230142/weights/best.pt
 
+model/runs/segment/
 
 # YOLO base model weights (gitignored - download if needed)
 model/weights/yolo11*.pt
