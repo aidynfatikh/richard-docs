@@ -93,27 +93,24 @@ export function HackathonHero() {
     setProgress({ current: 0, total: files.length });
 
     try {
-      // Process files with progress tracking using intelligent endpoint
-      const processPromises = files.map(async (file, index) => {
-        setProgress({ current: index + 1, total: files.length });
+      // Use batch endpoint for optimal performance (handles 1000+ files)
+      const batchResult = await apiService.batchDetect(
+        files,
+        0.25,
+        (current, total) => {
+          setProgress({ current, total });
+        },
+        100, // chunk size
+        10   // max parallel workers
+      );
 
-        // Use new intelligent processing endpoint
-        const result = await apiService.processDocument(file, 0.25);
+      if (!batchResult.success || !batchResult.data) {
+        throw new Error(batchResult.error?.detail || 'Batch processing failed');
+      }
 
-        // Small delay between requests
-        if (index < files.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+      const batchData = batchResult.data;
 
-        return {
-          file: file.name,
-          result
-        };
-      });
-
-      const responses = await Promise.all(processPromises);
-
-      // Filter successful results and expand multi-page PDFs
+      // Transform batch results into format expected by SolutionPage
       const successfulResults: Array<{ 
         fileName: string; 
         fileObject: File | null; 
@@ -122,54 +119,61 @@ export function HackathonHero() {
       }> = [];
       const errors: string[] = [];
 
-      responses.forEach(({ file, result }, index) => {
-        if (result.success && result.data) {
+      batchData.results.forEach((result) => {
+        if (result.success) {
           // Check if it's a multi-page PDF
-          if ('document_type' in result.data) {
-            const multiPageData = result.data as any;
-            console.log(`Multi-page PDF detected for ${file}: ${multiPageData.total_pages} pages`);
+          if ('total_pages' in result && 'pages' in result) {
+            const multiPageResult = result as any;
             
             // Calculate aggregate summary for the whole PDF
             const aggregateSummary = {
-              total_detections: multiPageData.summary.total_detections,
-              total_stamps: multiPageData.summary.total_stamps,
-              total_signatures: multiPageData.summary.total_signatures,
-              total_qrs: multiPageData.summary.total_qrs,
+              total_detections: result.summary.total_detections,
+              total_stamps: result.summary.total_stamps,
+              total_signatures: result.summary.total_signatures,
+              total_qrs: result.summary.total_qrs,
             };
             
             // Store all pages data
             successfulResults.push({
-              fileName: file,
+              fileName: result.filename,
               fileObject: null,
               data: {
-                ...multiPageData.pages[0], // Use first page's structure
+                ...multiPageResult.pages[0], // Use first page's structure
                 summary: aggregateSummary,
-                meta: multiPageData.meta
               },
-              pages: multiPageData.pages // Store all pages
+              pages: multiPageResult.pages // Store all pages
             });
           } else {
             // Single image file
-            console.log(`Processing single image for ${file}`);
             successfulResults.push({ 
-              fileName: file, 
-              fileObject: files[index], 
-              data: result.data 
+              fileName: result.filename, 
+              fileObject: files[result.file_index], 
+              data: result as DetectionResponse
             });
           }
         } else {
-          errors.push(`${file}: ${result.error?.detail || 'Unknown error'}`);
+          errors.push(`${result.filename}: ${result.error || 'Unknown error'}`);
         }
       });
 
       if (errors.length > 0) {
-        setError(`Some files failed: ${errors.join(', ')}`);
+        setError(`${errors.length} file(s) failed. ${batchData.successful_detections} succeeded.`);
       } else if (successfulResults.length === 0) {
         setError('All files failed to process');
       } else {
         // Navigate to solution page with results
         navigate('/solution', { state: { results: successfulResults } });
       }
+
+      // Log performance stats
+      console.log(`✅ Batch processing complete:`);
+      console.log(`   Total files: ${batchData.total_files}`);
+      console.log(`   Successful: ${batchData.successful_detections}`);
+      console.log(`   Failed: ${batchData.failed_detections}`);
+      console.log(`   Total time: ${batchData.meta.total_processing_time_ms.toFixed(0)}ms`);
+      console.log(`   Avg per file: ${batchData.meta.avg_time_per_file_ms.toFixed(0)}ms`);
+      console.log(`   Parallel workers: ${batchData.meta.parallel_workers}`);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process documents');
     } finally {

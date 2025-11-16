@@ -6,6 +6,8 @@ import uvicorn
 from typing import Optional, List
 import time
 import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from app.model_service import get_detector, get_realtime_detector
 from app.document_processor import get_processor
@@ -564,25 +566,159 @@ async def classify_document(file: UploadFile = File(...)):
         )
 
 
+async def process_single_file_batch(
+    file: UploadFile,
+    idx: int,
+    confidence: float,
+    force_scan: bool = False,
+    skip_scan: bool = False
+):
+    """Process a single file for batch detection with intelligent processing."""
+    try:
+        contents = await file.read()
+        if not contents:
+            return {
+                "file_index": idx,
+                "filename": file.filename,
+                "success": False,
+                "error": "Empty file"
+            }
+        
+        # Check format support
+        format_info = processor.get_format_info(file.filename or "document")
+        if not format_info['is_supported']:
+            return {
+                "file_index": idx,
+                "filename": file.filename,
+                "success": False,
+                "error": f"Unsupported format: {format_info['extension']}"
+            }
+        
+        # Handle PDFs with multi-page support
+        if format_info['is_pdf']:
+            try:
+                pages_data = processor.process_pdf_bytes(contents)
+                
+                # Process each page in parallel
+                page_results = []
+                for page_num, page_data in enumerate(pages_data):
+                    img = cv2.imdecode(
+                        np.frombuffer(base64.b64decode(page_data['image'].split(',')[1]), np.uint8),
+                        cv2.IMREAD_COLOR
+                    )
+                    detection_result = detector.detect(img)
+                    detection_result['page_number'] = page_num + 1
+                    detection_result['annotated_image'] = page_data['image']
+                    page_results.append(detection_result)
+                
+                # Aggregate summary
+                total_detections = sum(p['summary']['total_detections'] for p in page_results)
+                total_stamps = sum(p['summary']['total_stamps'] for p in page_results)
+                total_signatures = sum(p['summary']['total_signatures'] for p in page_results)
+                total_qrs = sum(p['summary']['total_qrs'] for p in page_results)
+                
+                return {
+                    "file_index": idx,
+                    "filename": file.filename,
+                    "success": True,
+                    "document_type": "multi_page_pdf",
+                    "total_pages": len(pages_data),
+                    "pages": page_results,
+                    "summary": {
+                        "total_detections": total_detections,
+                        "total_stamps": total_stamps,
+                        "total_signatures": total_signatures,
+                        "total_qrs": total_qrs
+                    }
+                }
+            except Exception as e:
+                return {
+                    "file_index": idx,
+                    "filename": file.filename,
+                    "success": False,
+                    "error": f"PDF processing failed: {str(e)}"
+                }
+        
+        # Handle images with optional scanning
+        else:
+            # Classify document
+            is_camera_photo, classification_info = is_document_photo(contents)
+            
+            should_scan = False
+            if force_scan:
+                should_scan = True
+            elif not skip_scan and is_camera_photo:
+                should_scan = True
+            
+            processed_contents = contents
+            scan_applied = False
+            
+            # Apply perspective correction if needed
+            if should_scan and doc_scanner is not None:
+                try:
+                    scan_result = doc_scanner.scan_image_bytes(contents)
+                    if scan_result['success']:
+                        processed_contents = scan_result['transformed_image']
+                        scan_applied = True
+                except Exception:
+                    pass  # Fall back to original
+            
+            # Decode and detect
+            nparr = np.frombuffer(processed_contents, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return {
+                    "file_index": idx,
+                    "filename": file.filename,
+                    "success": False,
+                    "error": "Failed to decode image"
+                }
+            
+            detection_result = detector.detect(img)
+            detection_result["file_index"] = idx
+            detection_result["filename"] = file.filename
+            detection_result["success"] = True
+            detection_result["classification"] = classification_info['classification']
+            detection_result["scan_applied"] = scan_applied
+            
+            return detection_result
+            
+    except Exception as e:
+        return {
+            "file_index": idx,
+            "filename": file.filename,
+            "success": False,
+            "error": str(e)
+        }
+
+
 @app.post("/batch-detect")
 async def batch_detect(
     files: List[UploadFile] = File(...),
-    confidence: Optional[float] = 0.25
+    confidence: Optional[float] = 0.25,
+    force_scan: Optional[bool] = False,
+    skip_scan: Optional[bool] = False,
+    max_workers: Optional[int] = 10
 ):
     """
-    Detect document elements (stamps, signatures, QR codes) in multiple uploaded images.
+    HIGH-PERFORMANCE batch detection for 1000+ files.
+    Supports images and PDFs with intelligent processing and parallel execution.
 
     Args:
-        files: List of image files
+        files: List of document files (images/PDFs)
         confidence: Confidence threshold (0-1), default 0.25
+        force_scan: Force perspective correction on all images
+        skip_scan: Skip perspective correction even for camera photos
+        max_workers: Maximum parallel workers (default 10, max 50)
 
     Returns:
-        JSON array with detected elements for each image
+        JSON with batch results and aggregate statistics
     """
-    if detector is None:
+    if detector is None or processor is None:
         raise HTTPException(
             status_code=503,
-            detail="Detector not loaded. Please check server logs."
+            detail="Services not loaded. Please check server logs."
         )
 
     if len(files) == 0:
@@ -591,11 +727,14 @@ async def batch_detect(
             detail="No files provided"
         )
 
-    if len(files) > 50:  # Limit batch size
+    if len(files) > 2000:  # Increased limit for hackathon
         raise HTTPException(
             status_code=400,
-            detail="Too many files. Maximum 50 files per batch."
+            detail="Too many files. Maximum 2000 files per batch."
         )
+
+    # Limit max_workers
+    max_workers = min(max_workers, 50)
 
     # Update detector confidence if provided
     original_confidence = detector.confidence_threshold
@@ -604,50 +743,33 @@ async def batch_detect(
 
     try:
         start_time = time.time()
+        
+        # Process files in parallel with semaphore to control concurrency
+        tasks = [
+            process_single_file_batch(file, idx, confidence, force_scan, skip_scan)
+            for idx, file in enumerate(files)
+        ]
+        
+        # Process in batches to avoid overwhelming the system
+        batch_size = max_workers
         results = []
-
-        for idx, file in enumerate(files):
-            # Read file contents
-            try:
-                contents = await file.read()
-            except Exception as e:
-                results.append({
-                    "file_index": idx,
-                    "filename": file.filename,
-                    "success": False,
-                    "error": f"Failed to read file: {str(e)}"
-                })
-                continue
-
-            # Decode image
-            try:
-                nparr = np.frombuffer(contents, np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-                if img is None:
+        
+        for i in range(0, len(tasks), batch_size):
+            batch = tasks[i:i + batch_size]
+            batch_results = await asyncio.gather(*batch, return_exceptions=True)
+            
+            # Handle exceptions
+            for j, result in enumerate(batch_results):
+                if isinstance(result, Exception):
                     results.append({
-                        "file_index": idx,
-                        "filename": file.filename,
+                        "file_index": i + j,
+                        "filename": files[i + j].filename,
                         "success": False,
-                        "error": "Failed to decode image"
+                        "error": str(result)
                     })
-                    continue
-
-                # Run detection
-                detection_result = detector.detect(img)
-                detection_result["file_index"] = idx
-                detection_result["filename"] = file.filename
-                detection_result["success"] = True
-                results.append(detection_result)
-
-            except Exception as e:
-                results.append({
-                    "file_index": idx,
-                    "filename": file.filename,
-                    "success": False,
-                    "error": str(e)
-                })
-
+                else:
+                    results.append(result)
+        
         total_time = (time.time() - start_time) * 1000
 
         # Restore original confidence
@@ -655,6 +777,19 @@ async def batch_detect(
 
         # Calculate overall summary
         successful_results = [r for r in results if r.get("success", False)]
+        
+        # Aggregate stats (handle both single-page and multi-page)
+        total_detections = 0
+        total_stamps = 0
+        total_signatures = 0
+        total_qrs = 0
+        
+        for r in successful_results:
+            if "summary" in r:
+                total_detections += r["summary"].get("total_detections", 0)
+                total_stamps += r["summary"].get("total_stamps", 0)
+                total_signatures += r["summary"].get("total_signatures", 0)
+                total_qrs += r["summary"].get("total_qrs", 0)
 
         return {
             "total_files": len(files),
@@ -662,14 +797,16 @@ async def batch_detect(
             "failed_detections": len(files) - len(successful_results),
             "results": results,
             "summary": {
-                "total_detections": sum(r["summary"]["total_detections"] for r in successful_results),
-                "total_stamps": sum(r["summary"]["total_stamps"] for r in successful_results),
-                "total_signatures": sum(r["summary"]["total_signatures"] for r in successful_results),
-                "total_qrs": sum(r["summary"]["total_qrs"] for r in successful_results),
+                "total_detections": total_detections,
+                "total_stamps": total_stamps,
+                "total_signatures": total_signatures,
+                "total_qrs": total_qrs,
             },
             "meta": {
                 "total_processing_time_ms": round(total_time, 2),
-                "confidence_threshold": confidence
+                "avg_time_per_file_ms": round(total_time / len(files), 2),
+                "confidence_threshold": confidence,
+                "parallel_workers": max_workers
             }
         }
 

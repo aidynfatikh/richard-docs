@@ -122,16 +122,20 @@ export interface BatchDetectionResponse {
   total_files: number;
   successful_detections: number;
   failed_detections: number;
-  results: Array<DetectionResponse & {
+  results: Array<(DetectionResponse | MultiPageDetectionResponse) & {
     file_index: number;
     filename: string;
     success: boolean;
     error?: string;
+    classification?: string;
+    scan_applied?: boolean;
   }>;
   summary: DetectionSummary;
   meta: {
     total_processing_time_ms: number;
+    avg_time_per_file_ms: number;
     confidence_threshold: number;
+    parallel_workers: number;
   };
 }
 

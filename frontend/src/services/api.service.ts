@@ -260,14 +260,34 @@ class APIService {
 
   /**
    * Detect document elements in multiple images in a single batch request
-   * @param files - Array of image files
+   * OPTIMIZED for 1000+ files with chunking, progress tracking, and parallel processing
+   * @param files - Array of image/PDF files
    * @param confidence - Optional confidence threshold (0-1)
+   * @param onProgress - Optional progress callback (current, total)
+   * @param chunkSize - Files per batch chunk (default 100)
+   * @param maxWorkers - Parallel workers on backend (default 10)
    */
   async batchDetect(
     files: File[],
-    confidence?: number
+    confidence?: number,
+    onProgress?: (current: number, total: number) => void,
+    chunkSize: number = 100,
+    maxWorkers: number = 10
   ): Promise<APIResponse<BatchDetectionResponse>> {
     try {
+      if (files.length === 0) {
+        return {
+          success: false,
+          error: { detail: 'No files provided' }
+        };
+      }
+
+      // For large batches, process in chunks to avoid timeouts
+      if (files.length > chunkSize) {
+        return await this.batchDetectChunked(files, confidence, onProgress, chunkSize, maxWorkers);
+      }
+
+      // Single batch for smaller sets
       const formData = new FormData();
 
       // Append all files with the same key name
@@ -275,24 +295,167 @@ class APIService {
         formData.append('files', file);
       });
 
-      // Add optional confidence parameter
+      // Add optional parameters
       const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT));
       if (confidence !== undefined) {
         url.searchParams.append('confidence', confidence.toString());
       }
+      url.searchParams.append('max_workers', maxWorkers.toString());
 
       const response = await fetchWithTimeout(
         url.toString(),
         {
           method: 'POST',
           body: formData,
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+          },
         },
-        60000 // 60 second timeout for batch processing
+        120000 // 120 second timeout for batch processing
       );
 
-      return handleResponse<BatchDetectionResponse>(response);
+      const result = await handleResponse<BatchDetectionResponse>(response);
+      
+      if (onProgress) {
+        onProgress(files.length, files.length);
+      }
+
+      return result;
     } catch (error) {
       return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Batch detection request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * Process large batches in chunks with progress tracking
+   * @private
+   */
+  private async batchDetectChunked(
+    files: File[],
+    confidence?: number,
+    onProgress?: (current: number, total: number) => void,
+    chunkSize: number = 100,
+    maxWorkers: number = 10
+  ): Promise<APIResponse<BatchDetectionResponse>> {
+    try {
+      const chunks: File[][] = [];
+      for (let i = 0; i < files.length; i += chunkSize) {
+        chunks.push(files.slice(i, i + chunkSize));
+      }
+
+      console.log(`Processing ${files.length} files in ${chunks.length} chunks of ${chunkSize}`);
+
+      let allResults: BatchDetectionResponse['results'] = [];
+      let totalProcessingTime = 0;
+      let processedCount = 0;
+
+      // Process chunks sequentially to avoid overwhelming server
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        
+        const formData = new FormData();
+        chunk.forEach((file) => {
+          formData.append('files', file);
+        });
+
+        const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT));
+        if (confidence !== undefined) {
+          url.searchParams.append('confidence', confidence.toString());
+        }
+        url.searchParams.append('max_workers', maxWorkers.toString());
+
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'ngrok-skip-browser-warning': 'true',
+            },
+          },
+          120000
+        );
+
+        const chunkResult = await handleResponse<BatchDetectionResponse>(response);
+        
+        if (!chunkResult.success || !chunkResult.data) {
+          throw new Error(`Chunk ${i + 1} failed: ${chunkResult.error?.detail}`);
+        }
+
+        // Adjust file indices to be global
+        const adjustedResults = chunkResult.data.results.map(r => ({
+          ...r,
+          file_index: r.file_index + (i * chunkSize)
+        }));
+
+        allResults = [...allResults, ...adjustedResults];
+        totalProcessingTime += chunkResult.data.meta.total_processing_time_ms;
+        processedCount += chunk.length;
+
+        // Update progress
+        if (onProgress) {
+          onProgress(processedCount, files.length);
+        }
+
+        console.log(`Chunk ${i + 1}/${chunks.length} completed (${processedCount}/${files.length} files)`);
+      }
+
+      // Aggregate results
+      const successfulResults = allResults.filter(r => r.success);
+      const failedResults = allResults.filter(r => !r.success);
+
+      // Calculate aggregate summary
+      const totalDetections = successfulResults.reduce((sum, r) => 
+        sum + (r.summary?.total_detections || 0), 0
+      );
+      const totalStamps = successfulResults.reduce((sum, r) => 
+        sum + (r.summary?.total_stamps || 0), 0
+      );
+      const totalSignatures = successfulResults.reduce((sum, r) => 
+        sum + (r.summary?.total_signatures || 0), 0
+      );
+      const totalQrs = successfulResults.reduce((sum, r) => 
+        sum + (r.summary?.total_qrs || 0), 0
+      );
+
+      const aggregatedResponse: BatchDetectionResponse = {
+        total_files: files.length,
+        successful_detections: successfulResults.length,
+        failed_detections: failedResults.length,
+        results: allResults,
+        summary: {
+          total_detections: totalDetections,
+          total_stamps: totalStamps,
+          total_signatures: totalSignatures,
+          total_qrs: totalQrs,
+        },
+        meta: {
+          total_processing_time_ms: totalProcessingTime,
+          avg_time_per_file_ms: totalProcessingTime / files.length,
+          confidence_threshold: confidence || 0.25,
+          parallel_workers: maxWorkers
+        }
+      };
+
+      return {
+        success: true,
+        data: aggregatedResponse
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'Chunked batch processing failed',
+        },
+      };
+    }
+  }
         success: false,
         error: {
           detail: error instanceof Error ? error.message : 'Batch detection request failed',
