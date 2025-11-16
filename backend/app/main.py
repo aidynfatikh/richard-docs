@@ -937,17 +937,80 @@ async def websocket_detect(websocket: WebSocket):
 
             # Run detection on frame
             try:
-                result = realtime_detector.detect_frame(frame)
+                # Run document classification
+                classification_start = time.time()
+                is_camera, classification_info = is_document_photo(img_bytes)
+                classification_time = (time.time() - classification_start) * 1000
+
+                # Run detection
+                detection_result = realtime_detector.detect_frame(frame)
+
+                # Transform coordinates into categorized format like /detect
+                stamps = []
+                signatures = []
+                qrs = []
+
+                for det in detection_result["coordinates"]:
+                    class_name = det["class"]
+                    bbox = [
+                        det["coordinates"]["x1"],
+                        det["coordinates"]["y1"],
+                        det["coordinates"]["x2"],
+                        det["coordinates"]["y2"]
+                    ]
+
+                    detection_obj = {
+                        "bbox": bbox,
+                        "confidence": det["confidence"],
+                        "class_name": class_name
+                    }
+
+                    # Add grouping metadata if available
+                    if det.get("grouped", False):
+                        detection_obj["grouped"] = True
+                        detection_obj["group_count"] = det.get("group_count", 1)
+
+                    # Categorize by type
+                    if class_name == "stamp":
+                        stamps.append(detection_obj)
+                    elif class_name == "signature":
+                        signatures.append(detection_obj)
+                    elif class_name == "qr":
+                        qrs.append(detection_obj)
+
+                # Build response matching /detect format
+                result = {
+                    "image_size": detection_result["image_size"],
+                    "stamps": stamps,
+                    "signatures": signatures,
+                    "qrs": qrs,
+                    "summary": {
+                        "total_stamps": len(stamps),
+                        "total_signatures": len(signatures),
+                        "total_qrs": len(qrs),
+                        "total_detections": len(stamps) + len(signatures) + len(qrs)
+                    },
+                    "classification": {
+                        "is_camera_photo": is_camera,
+                        "confidence": classification_info.get("confidence", 0),
+                        "reasons": classification_info.get("reasons", []),
+                        "exif_data": classification_info.get("exif_data", {}),
+                        "visual_features": classification_info.get("visual_features", {}),
+                        "classification_time_ms": round(classification_time, 2)
+                    }
+                }
 
                 # Track performance metrics
                 frame_count += 1
-                total_inference_time += result["inference_time_ms"]
+                total_inference_time += detection_result["inference_time_ms"]
                 avg_inference_time = total_inference_time / frame_count
 
                 # Add performance metrics to response
                 result["meta"] = {
                     "frame_count": frame_count,
-                    "avg_inference_time_ms": round(avg_inference_time, 2)
+                    "avg_inference_time_ms": round(avg_inference_time, 2),
+                    "inference_time_ms": detection_result["inference_time_ms"],
+                    "total_processing_time_ms": round(detection_result["inference_time_ms"] + classification_time, 2)
                 }
 
                 # Send results back to client
@@ -956,10 +1019,13 @@ async def websocket_detect(websocket: WebSocket):
                 # Log every 10 frames for monitoring
                 if frame_count % 10 == 0:
                     fps = 1000 / avg_inference_time if avg_inference_time > 0 else 0
+                    total_dets = result['summary']['total_detections']
                     print(f"[WebSocket] Frame {frame_count}: "
-                          f"{len(result['coordinates'])} detections, "
-                          f"{result['inference_time_ms']:.1f}ms, "
-                          f"avg FPS: {fps:.1f}")
+                          f"{total_dets} detections "
+                          f"(stamps: {len(stamps)}, sigs: {len(signatures)}, qrs: {len(qrs)}), "
+                          f"{detection_result['inference_time_ms']:.1f}ms, "
+                          f"avg FPS: {fps:.1f}, "
+                          f"camera: {is_camera}")
 
             except Exception as e:
                 print(f"[WebSocket] Detection error: {e}")

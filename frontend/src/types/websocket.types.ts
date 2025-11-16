@@ -17,6 +17,31 @@ export interface RealtimeDetection {
   normalized_coordinates?: DetectionCoordinates;
   confidence: number;
   class: 'stamp' | 'signature' | 'qr';
+  grouped?: boolean;
+  group_count?: number;
+}
+
+/**
+ * Categorized detection (matching /detect format)
+ */
+export interface CategorizedDetection {
+  bbox: number[]; // [x1, y1, x2, y2]
+  confidence: number;
+  class_name: 'stamp' | 'signature' | 'qr';
+  grouped?: boolean;
+  group_count?: number;
+}
+
+/**
+ * Classification result for document photo detection
+ */
+export interface ClassificationResult {
+  is_camera_photo: boolean;
+  confidence: number;
+  reasons: string[];
+  exif_data: Record<string, any>;
+  visual_features: Record<string, any>;
+  classification_time_ms: number;
 }
 
 /**
@@ -52,14 +77,34 @@ export interface WebSocketFrameMessage {
 }
 
 /**
- * Successful detection response from server
+ * Detection summary
+ */
+export interface DetectionSummary {
+  total_stamps: number;
+  total_signatures: number;
+  total_qrs: number;
+  total_detections: number;
+}
+
+/**
+ * Extended performance metadata
+ */
+export interface ExtendedPerformanceMetadata extends PerformanceMetadata {
+  inference_time_ms: number;
+  total_processing_time_ms: number;
+}
+
+/**
+ * Successful detection response from server (new format matching /detect)
  */
 export interface WebSocketDetectionResponse {
-  coordinates: RealtimeDetection[];
-  counts: DetectionCounts;
   image_size: ImageSize;
-  inference_time_ms: number;
-  meta?: PerformanceMetadata;
+  stamps: CategorizedDetection[];
+  signatures: CategorizedDetection[];
+  qrs: CategorizedDetection[];
+  summary: DetectionSummary;
+  classification: ClassificationResult;
+  meta?: ExtendedPerformanceMetadata;
 }
 
 /**
@@ -86,7 +131,7 @@ export function isWebSocketError(response: WebSocketResponse): response is WebSo
  * Type guard to check if response is a detection result
  */
 export function isWebSocketDetection(response: WebSocketResponse): response is WebSocketDetectionResponse {
-  return 'coordinates' in response;
+  return 'stamps' in response && 'signatures' in response && 'qrs' in response;
 }
 
 /**

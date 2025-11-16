@@ -51,15 +51,82 @@ export function RealtimeScanPage() {
 
         wsService.onDetection((result) => {
           if (mounted) {
-            setCoordinates(result.coordinates);
-            setCounts(result.counts);
+            // Transform categorized detections back to coordinates format for overlay
+            const allDetections: RealtimeDetection[] = [];
+
+            // Add stamps
+            result.stamps.forEach(det => {
+              allDetections.push({
+                coordinates: {
+                  x1: det.bbox[0],
+                  y1: det.bbox[1],
+                  x2: det.bbox[2],
+                  y2: det.bbox[3]
+                },
+                confidence: det.confidence,
+                class: 'stamp',
+                grouped: det.grouped,
+                group_count: det.group_count
+              });
+            });
+
+            // Add signatures
+            result.signatures.forEach(det => {
+              allDetections.push({
+                coordinates: {
+                  x1: det.bbox[0],
+                  y1: det.bbox[1],
+                  x2: det.bbox[2],
+                  y2: det.bbox[3]
+                },
+                confidence: det.confidence,
+                class: 'signature',
+                grouped: det.grouped,
+                group_count: det.group_count
+              });
+            });
+
+            // Add QR codes
+            result.qrs.forEach(det => {
+              allDetections.push({
+                coordinates: {
+                  x1: det.bbox[0],
+                  y1: det.bbox[1],
+                  x2: det.bbox[2],
+                  y2: det.bbox[3]
+                },
+                confidence: det.confidence,
+                class: 'qr',
+                grouped: det.grouped,
+                group_count: det.group_count
+              });
+            });
+
+            setCoordinates(allDetections);
+            setCounts({
+              stamp: result.summary.total_stamps,
+              signature: result.summary.total_signatures,
+              qr: result.summary.total_qrs
+            });
             setImageSize(result.image_size);
-            setLatency(result.inference_time_ms);
+
+            // Use total processing time if available, otherwise use inference time
+            const processingTime = result.meta?.total_processing_time_ms || result.meta?.inference_time_ms || 0;
+            setLatency(processingTime);
 
             // Calculate FPS from average inference time
             if (result.meta) {
               const avgFps = 1000 / result.meta.avg_inference_time_ms;
               setFps(avgFps);
+            }
+
+            // Log classification results for debugging
+            if (result.classification) {
+              console.log('[Classification]', {
+                is_camera: result.classification.is_camera_photo,
+                confidence: result.classification.confidence,
+                reasons: result.classification.reasons
+              });
             }
           }
         });

@@ -569,7 +569,7 @@ class RealTimeDetector:
     """
 
     def __init__(self, model_path=None, confidence_threshold=0.25, device='cpu',
-                 image_size=416, iou_threshold=0.40):
+                 image_size=416, iou_threshold=0.40, enable_grouping=True, group_iou_threshold=0.2):
         """
         Initialize real-time detector.
 
@@ -579,6 +579,8 @@ class RealTimeDetector:
             device: Device to run on ('cpu', 'cuda', '0', '1', etc.)
             image_size: Input size for inference (default: 416 for speed)
             iou_threshold: NMS IoU threshold (default: 0.40, slightly lower for speed)
+            enable_grouping: Whether to enable signature grouping (default: True)
+            group_iou_threshold: IoU threshold for grouping detections (default: 0.2)
         """
         if model_path is None:
             # Use same model finder as DocumentDetector
@@ -592,9 +594,11 @@ class RealTimeDetector:
         self.device = device
         self.image_size = image_size
         self.iou_threshold = iou_threshold
+        self.enable_grouping = enable_grouping
+        self.group_iou_threshold = group_iou_threshold
 
         print(f"Loading Real-Time YOLO model from: {model_path}")
-        print(f"Real-Time Optimizations: image_size={image_size}, grouping=disabled")
+        print(f"Real-Time Optimizations: image_size={image_size}, grouping={'enabled' if enable_grouping else 'disabled'}")
         self.model = YOLO(model_path)
         self.class_names = self.model.names
         print(f"Real-Time model loaded. Classes: {self.class_names}")
@@ -628,6 +632,184 @@ class RealTimeDetector:
 
         return str(best_model)
 
+    def calculate_distance(self, box1: List[float], box2: List[float]) -> float:
+        """Calculate center-to-center distance between two boxes"""
+        x1_center = (box1[0] + box1[2]) / 2
+        y1_center = (box1[1] + box1[3]) / 2
+        x2_center = (box2[0] + box2[2]) / 2
+        y2_center = (box2[1] + box2[3]) / 2
+
+        return np.sqrt((x1_center - x2_center)**2 + (y1_center - y2_center)**2)
+
+    def calculate_iou(self, box1: List[float], box2: List[float]) -> float:
+        """Calculate IoU between two boxes"""
+        x1_max = max(box1[0], box2[0])
+        y1_max = max(box1[1], box2[1])
+        x2_min = min(box1[2], box2[2])
+        y2_min = min(box1[3], box2[3])
+
+        if x2_min < x1_max or y2_min < y1_max:
+            return 0.0
+
+        intersection = (x2_min - x1_max) * (y2_min - y1_max)
+
+        area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+        area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+        union = area1 + area2 - intersection
+
+        return intersection / union if union > 0 else 0.0
+
+    def calculate_containment(self, box1: List[float], box2: List[float]) -> float:
+        """Calculate how much box1 is contained within box2 (0.0 to 1.0)"""
+        x1_max = max(box1[0], box2[0])
+        y1_max = max(box1[1], box2[1])
+        x2_min = min(box1[2], box2[2])
+        y2_min = min(box1[3], box2[3])
+
+        if x2_min < x1_max or y2_min < y1_max:
+            return 0.0
+
+        intersection = (x2_min - x1_max) * (y2_min - y1_max)
+        area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+
+        return intersection / area1 if area1 > 0 else 0.0
+
+    def boxes_are_close(self, box1: Dict, box2: Dict, distance_threshold: float = 50) -> bool:
+        """Check if two boxes should be grouped together"""
+
+        # Calculate distance between centers
+        distance = self.calculate_distance(box1['box'], box2['box'])
+
+        # Calculate IoU
+        iou = self.calculate_iou(box1['box'], box2['box'])
+
+        # Calculate containment (for signatures inside other signatures)
+        containment1 = self.calculate_containment(box1['box'], box2['box'])
+        containment2 = self.calculate_containment(box2['box'], box1['box'])
+        max_containment = max(containment1, containment2)
+
+        # Group if:
+        # 1. Close enough (centers nearby)
+        # 2. Overlapping enough (IoU)
+        # 3. One box is mostly inside another (>60% containment - catches partial detections)
+        return (distance < distance_threshold or
+                iou > self.group_iou_threshold or
+                max_containment > 0.6)
+
+    def group_detections(self, detections: List[Dict]) -> List[Dict]:
+        """
+        Group nearby/overlapping detections of the SAME CLASS into unified detections.
+        Uses two-pass strategy matching production inference.py:
+        1. First pass: Remove boxes almost completely inside other boxes (duplicates)
+        2. Second pass: Merge remaining nearby/overlapping boxes
+
+        Args:
+            detections: List of detection dictionaries
+
+        Returns:
+            List of detections with grouped boxes merged
+        """
+        if not self.enable_grouping or not detections:
+            return detections
+
+        # Group by class
+        by_class = {}
+        for det in detections:
+            class_id = det['class_id']
+            if class_id not in by_class:
+                by_class[class_id] = []
+            by_class[class_id].append(det)
+
+        # Process each class separately
+        merged_detections = []
+
+        for class_id, class_detections in by_class.items():
+            # Sort by confidence (highest first) then by area (largest first)
+            class_detections = sorted(class_detections,
+                                     key=lambda x: (x['confidence'],
+                                                  (x['box'][2]-x['box'][0])*(x['box'][3]-x['box'][1])),
+                                     reverse=True)
+
+            # PASS 1: Remove boxes that are almost completely inside other boxes
+            kept_detections = []
+            for i, det1 in enumerate(class_detections):
+                is_redundant = False
+
+                for j, det2 in enumerate(class_detections):
+                    if i == j:
+                        continue
+
+                    containment = self.calculate_containment(det1['box'], det2['box'])
+
+                    # If >75% of this box is inside another box, check which one to keep
+                    if containment > 0.75:
+                        if det2['confidence'] > det1['confidence']:
+                            is_redundant = True
+                            break
+                        elif det2['confidence'] == det1['confidence']:
+                            # Same confidence - keep larger box
+                            area1 = (det1['box'][2] - det1['box'][0]) * (det1['box'][3] - det1['box'][1])
+                            area2 = (det2['box'][2] - det2['box'][0]) * (det2['box'][3] - det2['box'][1])
+                            if area2 > area1:
+                                is_redundant = True
+                                break
+
+                if not is_redundant:
+                    kept_detections.append(det1)
+
+            # PASS 2: Merge remaining nearby/overlapping boxes
+            assigned = set()
+
+            for i, det1 in enumerate(kept_detections):
+                if i in assigned:
+                    continue
+
+                # Start new group for this detection
+                group = [det1]
+                assigned.add(i)
+
+                # Find all same-class detections that overlap/are close to this one
+                for j, det2 in enumerate(kept_detections):
+                    if j in assigned:
+                        continue
+
+                    # Check if det2 should be grouped with any detection in current group
+                    should_group = False
+                    for group_det in group:
+                        if self.boxes_are_close(group_det, det2, distance_threshold=50):
+                            should_group = True
+                            break
+
+                    if should_group:
+                        group.append(det2)
+                        assigned.add(j)
+
+                # Merge group into single detection
+                if len(group) == 1:
+                    # Single detection, keep as-is
+                    merged_detections.append(group[0])
+                else:
+                    # Multiple overlapping detections - merge into one
+                    all_boxes = [d['box'] for d in group]
+                    x1 = min(box[0] for box in all_boxes)
+                    y1 = min(box[1] for box in all_boxes)
+                    x2 = max(box[2] for box in all_boxes)
+                    y2 = max(box[3] for box in all_boxes)
+
+                    # Use highest confidence
+                    max_conf = max(d['confidence'] for d in group)
+
+                    merged_detections.append({
+                        'class_id': class_id,
+                        'class_name': det1['class_name'],
+                        'confidence': max_conf,
+                        'box': [x1, y1, x2, y2],
+                        'grouped': True,
+                        'group_count': len(group)
+                    })
+
+        return merged_detections
+
     def detect_frame(self, image):
         """
         Run detection on a video frame (optimized for speed).
@@ -659,9 +841,8 @@ class RealTimeDetector:
             half=False  # Disable FP16 for CPU stability
         )[0]
 
-        # Parse detections into lightweight format (coordinates only)
-        coordinates = []
-        counts = {"stamp": 0, "signature": 0, "qr": 0}
+        # Parse detections into internal format for grouping
+        detections = []
 
         if results.boxes is not None and len(results.boxes) > 0:
             boxes = results.boxes.xyxy.cpu().numpy()  # x1, y1, x2, y2
@@ -669,28 +850,52 @@ class RealTimeDetector:
             class_ids = results.boxes.cls.cpu().numpy().astype(int)
 
             for box, conf, cls_id in zip(boxes, confidences, class_ids):
-                x1, y1, x2, y2 = map(int, box)  # Convert to int for JSON
+                x1, y1, x2, y2 = box  # Keep as float for grouping calculations
                 class_name = self.class_names[cls_id]
 
-                detection = {
-                    "coordinates": {
-                        "x1": x1,
-                        "y1": y1,
-                        "x2": x2,
-                        "y2": y2
-                    },
-                    "normalized_coordinates": {
-                        "x1": round(x1 / img_width, 6),
-                        "y1": round(y1 / img_height, 6),
-                        "x2": round(x2 / img_width, 6),
-                        "y2": round(y2 / img_height, 6)
-                    },
-                    "confidence": round(float(conf), 3),  # Round to 3 decimals
-                    "class": class_name
-                }
+                detections.append({
+                    'class_id': int(cls_id),
+                    'class_name': class_name,
+                    'confidence': float(conf),
+                    'box': [float(x1), float(y1), float(x2), float(y2)]
+                })
 
-                coordinates.append(detection)
-                counts[class_name] = counts.get(class_name, 0) + 1
+        # Apply grouping if enabled
+        detections = self.group_detections(detections)
+
+        # Convert to response format
+        coordinates = []
+        counts = {"stamp": 0, "signature": 0, "qr": 0}
+
+        for det in detections:
+            x1, y1, x2, y2 = det['box']
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            class_name = det['class_name']
+
+            detection = {
+                "coordinates": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2
+                },
+                "normalized_coordinates": {
+                    "x1": round(x1 / img_width, 6),
+                    "y1": round(y1 / img_height, 6),
+                    "x2": round(x2 / img_width, 6),
+                    "y2": round(y2 / img_height, 6)
+                },
+                "confidence": round(det['confidence'], 3),
+                "class": class_name
+            }
+
+            # Add grouping metadata if available
+            if det.get('grouped', False):
+                detection['grouped'] = True
+                detection['group_count'] = det.get('group_count', 1)
+
+            coordinates.append(detection)
+            counts[class_name] = counts.get(class_name, 0) + 1
 
         inference_time = (time.time() - start_time) * 1000  # Convert to ms
 
@@ -707,7 +912,8 @@ _realtime_detector_instance = None
 
 
 def get_realtime_detector(model_path=None, confidence_threshold=0.25, device='cpu',
-                          image_size=416, iou_threshold=0.40):
+                          image_size=416, iou_threshold=0.40, enable_grouping=True,
+                          group_iou_threshold=0.2):
     """
     Get or create real-time detector instance (singleton).
 
@@ -717,6 +923,8 @@ def get_realtime_detector(model_path=None, confidence_threshold=0.25, device='cp
         device: Device to run on
         image_size: Input size for inference (default: 416)
         iou_threshold: NMS IoU threshold (default: 0.40)
+        enable_grouping: Whether to enable signature grouping (default: True)
+        group_iou_threshold: IoU threshold for grouping detections (default: 0.2)
 
     Returns:
         RealTimeDetector instance
@@ -729,7 +937,9 @@ def get_realtime_detector(model_path=None, confidence_threshold=0.25, device='cp
             confidence_threshold=confidence_threshold,
             device=device,
             image_size=image_size,
-            iou_threshold=iou_threshold
+            iou_threshold=iou_threshold,
+            enable_grouping=enable_grouping,
+            group_iou_threshold=group_iou_threshold
         )
 
     return _realtime_detector_instance

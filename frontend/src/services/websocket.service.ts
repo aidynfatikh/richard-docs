@@ -10,6 +10,43 @@ import type {
 } from '../types/websocket.types';
 import { WEB_SOCKET_STATE } from '../types/websocket.types';
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+
+function isBrowser(): boolean {
+  return typeof window !== 'undefined';
+}
+
+function isLocalHost(hostname: string | null | undefined): boolean {
+  if (!hostname) return false;
+  return LOCAL_HOSTS.has(hostname);
+}
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+function determineRealtimeBaseUrl(apiUrl: string): string {
+  if (!isBrowser()) {
+    return normalizeBaseUrl(apiUrl);
+  }
+
+  try {
+    const apiHost = new URL(apiUrl).hostname;
+    const browserHost = window.location.hostname;
+
+    if (!isLocalHost(browserHost) && isLocalHost(apiHost)) {
+      return normalizeBaseUrl(window.location.origin);
+    }
+  } catch {
+    // If URL parsing fails, fall back to browser origin if available
+    if (window.location.origin) {
+      return normalizeBaseUrl(window.location.origin);
+    }
+  }
+
+  return normalizeBaseUrl(apiUrl);
+}
+
 export class RealtimeDetectionService {
   private ws: WebSocket | null = null;
   private url: string;
@@ -25,8 +62,9 @@ export class RealtimeDetectionService {
 
   constructor(apiUrl: string) {
     // Convert HTTP URL to WebSocket URL
-    const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
-    const urlWithoutProtocol = apiUrl.replace(/^https?:\/\//, '');
+    const realtimeBaseUrl = determineRealtimeBaseUrl(apiUrl);
+    const wsProtocol = realtimeBaseUrl.startsWith('https') ? 'wss' : 'ws';
+    const urlWithoutProtocol = realtimeBaseUrl.replace(/^https?:\/\//, '');
     this.url = `${wsProtocol}://${urlWithoutProtocol}/ws/detect`;
   }
 
@@ -58,8 +96,8 @@ export class RealtimeDetectionService {
               if (this.onErrorCallback) {
                 this.onErrorCallback(response.message);
               }
-            } else if ('coordinates' in response) {
-              // Valid detection response
+            } else if ('stamps' in response && 'signatures' in response && 'qrs' in response) {
+              // Valid detection response (new format)
               if (this.onDetectionCallback) {
                 this.onDetectionCallback(response);
               }
@@ -231,6 +269,11 @@ export function captureFrameFromVideo(
   quality: number = 0.8
 ): string | null {
   try {
+    // Skip capture until video metadata is ready
+    if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+      return null;
+    }
+
     const canvas = document.createElement('canvas');
     canvas.width = videoElement.videoWidth;
     canvas.height = videoElement.videoHeight;
@@ -244,7 +287,19 @@ export function captureFrameFromVideo(
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
     // Convert to JPEG data URL with specified quality
-    return canvas.toDataURL('image/jpeg', quality);
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+    // Ensure data URL actually contains encoded data
+    if (!dataUrl.includes('base64,')) {
+      return null;
+    }
+
+    const [, payload] = dataUrl.split('base64,');
+    if (!payload) {
+      return null;
+    }
+
+    return dataUrl;
   } catch (error) {
     console.error('Failed to capture frame:', error);
     return null;
