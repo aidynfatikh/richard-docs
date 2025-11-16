@@ -29,13 +29,16 @@ export function TeamSection() {
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-lg"
               />
             </div>
-            <div className="text-2xl font-bold mb-4 transition-colors duration-200" 
+            <div className="text-2xl font-bold mb-2 transition-colors duration-200" 
               style={{ color: 'rgba(247, 247, 248, 1)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
             >
               Dauren
             </div>
+            <p className="text-lg mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+              Full-stack Engineer
+            </p>
             <a  
               href="https://www.linkedin.com/in/dauren-apas/"
               target="_blank"
@@ -56,13 +59,16 @@ export function TeamSection() {
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-lg"
               />
             </div>
-            <div className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 transition-colors duration-200"
+            <div className="text-xl sm:text-2xl font-bold mb-2 transition-colors duration-200"
               style={{ color: 'rgba(247, 247, 248, 1)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
             >
               Fatikh
             </div>
+            <p className="text-lg mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+              ML Engineer
+            </p>
             <a 
               href="https://www.linkedin.com/in/fatikh-aidyn/?lipi=urn%3Ali%3Apage%3Ad_flagship3_feed%3BZZZ8Y7quS8C7syeFPRM1xQ%3D%3D"
               target="_blank"
@@ -83,13 +89,16 @@ export function TeamSection() {
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover shadow-lg"
               />
             </div>
-            <div className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 transition-colors duration-200"
+            <div className="text-xl sm:text-2xl font-bold mb-2 transition-colors duration-200"
               style={{ color: 'rgba(247, 247, 248, 1)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(0, 23, 255, 1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(247, 247, 248, 1)'}
             >
               Bizhan
             </div>
+            <p className="text-lg mb-4" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+              Full-stack Engineer
+            </p>
             <a 
               href="https://www.linkedin.com/in/bizhanchik"
               target="_blank"

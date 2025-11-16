@@ -393,6 +393,134 @@ class DocumentDetector:
             list: List of detection results
         """
         return [self.detect(img, iou_threshold, image_size) for img in images]
+    
+    def detect_batch_optimized(self, images: List[np.ndarray], iou_threshold: Optional[float] = None, image_size: int = 640) -> List[Dict]:
+        """
+        Optimized batch detection using YOLO's native batch inference.
+        Processes multiple images in a single forward pass for better performance.
+        
+        Args:
+            images: List of image numpy arrays (BGR format)
+            iou_threshold: NMS IoU threshold (uses instance default if None)
+            image_size: Input size for model (default: 640)
+        
+        Returns:
+            List of detection result dictionaries (same format as detect())
+        """
+        if not images:
+            return []
+        
+        start_time = time.time()
+        
+        if iou_threshold is None:
+            iou_threshold = self.iou_threshold
+        
+        # Run batch inference - YOLO handles batching internally
+        results_batch = self.model.predict(
+            source=images,
+            conf=self.confidence_threshold,
+            iou=iou_threshold,
+            imgsz=image_size,
+            device=self.device,
+            verbose=False
+        )
+        
+        # Process each result
+        batch_results = []
+        for img_idx, (img, results) in enumerate(zip(images, results_batch)):
+            img_height, img_width = img.shape[:2]
+            
+            # Parse detections for this image
+            raw_detections = []
+            
+            if results.boxes is not None and len(results.boxes) > 0:
+                boxes = results.boxes.xyxy.cpu().numpy()
+                confidences = results.boxes.conf.cpu().numpy()
+                class_ids = results.boxes.cls.cpu().numpy().astype(int)
+                
+                for box, conf, cls_id in zip(boxes, confidences, class_ids):
+                    x1, y1, x2, y2 = map(float, box)
+                    class_name = self.class_names[cls_id]
+                    
+                    detection = {
+                        "box": [x1, y1, x2, y2],
+                        "confidence": float(conf),
+                        "class_name": class_name,
+                        "class_id": int(cls_id)
+                    }
+                    raw_detections.append(detection)
+            
+            # Apply grouping logic
+            original_count = len(raw_detections)
+            grouped_detections = self.group_detections(raw_detections)
+            grouped_count = original_count - len(grouped_detections)
+            
+            # Categorize detections by type
+            stamps = []
+            signatures = []
+            qrs = []
+            
+            for i, det in enumerate(grouped_detections):
+                class_name = det['class_name']
+                x1, y1, x2, y2 = det['box']
+                
+                detection_obj = {
+                    "id": f"{class_name}_{i+1}",
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                    "confidence": det['confidence'],
+                    "class_name": class_name,
+                    "class_id": det['class_id']
+                }
+                
+                if det.get('grouped', False):
+                    detection_obj['grouped'] = True
+                    detection_obj['group_count'] = det.get('group_count', 2)
+                
+                if class_name == "stamp":
+                    stamps.append(detection_obj)
+                elif class_name == "signature":
+                    signatures.append(detection_obj)
+                elif class_name == "qr":
+                    qrs.append(detection_obj)
+            
+            # Build result dictionary
+            result = {
+                "image_size": {
+                    "width_px": img_width,
+                    "height_px": img_height
+                },
+                "stamps": stamps,
+                "signatures": signatures,
+                "qrs": qrs,
+                "summary": {
+                    "total_stamps": len(stamps),
+                    "total_signatures": len(signatures),
+                    "total_qrs": len(qrs),
+                    "total_detections": len(stamps) + len(signatures) + len(qrs),
+                    "raw_detections": original_count,
+                    "grouped_detections": grouped_count if grouped_count > 0 else None
+                },
+                "meta": {
+                    "model_version": os.path.basename(self.model_path),
+                    "confidence_threshold": self.confidence_threshold,
+                    "grouping_enabled": self.enable_grouping,
+                    "group_iou_threshold": self.group_iou_threshold if self.enable_grouping else None
+                }
+            }
+            
+            batch_results.append(result)
+        
+        # Add batch timing info
+        total_inference_time = (time.time() - start_time) * 1000
+        avg_time_per_image = total_inference_time / len(images)
+        
+        for i, result in enumerate(batch_results):
+            result["meta"]["batch_inference_time_ms"] = round(total_inference_time, 2)
+            result["meta"]["avg_time_per_image_ms"] = round(avg_time_per_image, 2)
+            result["meta"]["batch_size"] = len(images)
+            result["meta"]["image_index"] = i
+        
+        return batch_results
 
 
 # Global model instance (singleton pattern for API)

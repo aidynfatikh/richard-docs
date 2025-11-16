@@ -12,6 +12,8 @@ from typing import List, Tuple, Optional
 import fitz  # PyMuPDF
 from PIL import Image
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
 
 
 class DocumentProcessor:
@@ -86,53 +88,113 @@ class DocumentProcessor:
                 print(f"Error processing image with OpenCV: {e2}")
                 return None
     
-    def pdf_to_images(self, pdf_bytes: bytes) -> List[Tuple[np.ndarray, int, str]]:
+    def pdf_to_images(self, pdf_bytes: bytes, enable_base64: bool = True, parallel: bool = True) -> List[Tuple[np.ndarray, int, Optional[str]]]:
         """
-        Convert PDF pages to images.
+        Convert PDF pages to images with parallel processing.
         
         Args:
             pdf_bytes: Raw PDF bytes
+            enable_base64: Whether to generate base64 encoded images (default: True)
+            parallel: Whether to use parallel processing (default: True)
             
         Returns:
             List of (image_array, page_number, base64_image) tuples
+            base64_image is None if enable_base64=False
         """
-        images = []
-        
         try:
             # Open PDF from bytes
             pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+            page_count = pdf_document.page_count
             
-            # Process each page
-            for page_num in range(pdf_document.page_count):
-                page = pdf_document[page_num]
-                
-                # Render page to image
-                # zoom factor: dpi/72 (72 is default PDF DPI)
-                zoom = self.dpi / 72
-                mat = fitz.Matrix(zoom, zoom)
-                pix = page.get_pixmap(matrix=mat)
-                
-                # Convert to PIL Image
-                img_data = pix.tobytes("png")
-                pil_image = Image.open(io.BytesIO(img_data))
-                
-                # Convert to OpenCV format (numpy array, BGR)
-                img_array = np.array(pil_image)
-                img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                
-                # Create base64 encoded image for frontend
-                buffered = io.BytesIO()
-                pil_image.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                base64_str = f"data:image/png;base64,{img_base64}"
-                
-                images.append((img_array, page_num + 1, base64_str))  # 1-indexed page numbers
+            if parallel and page_count > 1:
+                # Parallel processing for multi-page PDFs
+                images = self._process_pdf_parallel(pdf_document, enable_base64)
+            else:
+                # Sequential processing for single page or when parallel disabled
+                images = self._process_pdf_sequential(pdf_document, enable_base64)
             
             pdf_document.close()
             
         except Exception as e:
             print(f"Error processing PDF: {e}")
             raise ValueError(f"Failed to process PDF: {str(e)}")
+        
+        return images
+    
+    def _process_single_page(self, page, page_num: int, enable_base64: bool) -> Tuple[np.ndarray, int, Optional[str]]:
+        """
+        Process a single PDF page to image.
+        
+        Args:
+            page: PyMuPDF page object
+            page_num: Page number (0-indexed)
+            enable_base64: Whether to generate base64 encoded image
+            
+        Returns:
+            Tuple of (image_array, page_number, base64_image)
+        """
+        # Render page to image
+        zoom = self.dpi / 72
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # Convert directly from pixmap to numpy (skip PIL for efficiency)
+        img_data = pix.samples
+        img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        
+        # Convert RGB to BGR for OpenCV
+        if pix.n == 3:  # RGB
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        elif pix.n == 4:  # RGBA
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
+        
+        # Create base64 encoded image only if requested
+        base64_str = None
+        if enable_base64:
+            # Encode to PNG for base64
+            success, encoded_img = cv2.imencode('.png', img_array)
+            if success:
+                img_base64 = base64.b64encode(encoded_img.tobytes()).decode('utf-8')
+                base64_str = f"data:image/png;base64,{img_base64}"
+        
+        return (img_array, page_num + 1, base64_str)  # 1-indexed page numbers
+    
+    def _process_pdf_sequential(self, pdf_document, enable_base64: bool) -> List[Tuple[np.ndarray, int, Optional[str]]]:
+        """
+        Process PDF pages sequentially.
+        """
+        images = []
+        for page_num in range(pdf_document.page_count):
+            page = pdf_document[page_num]
+            result = self._process_single_page(page, page_num, enable_base64)
+            images.append(result)
+        return images
+    
+    def _process_pdf_parallel(self, pdf_document, enable_base64: bool) -> List[Tuple[np.ndarray, int, Optional[str]]]:
+        """
+        Process PDF pages in parallel using ThreadPoolExecutor.
+        """
+        page_count = pdf_document.page_count
+        max_workers = min(multiprocessing.cpu_count(), page_count, 8)  # Limit to 8 workers
+        
+        images = [None] * page_count  # Pre-allocate list to maintain order
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all pages for processing
+            future_to_page = {
+                executor.submit(self._process_single_page, pdf_document[i], i, enable_base64): i
+                for i in range(page_count)
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_page):
+                page_idx = future_to_page[future]
+                try:
+                    result = future.result()
+                    images[page_idx] = result
+                except Exception as e:
+                    print(f"Error processing page {page_idx + 1}: {e}")
+                    raise
         
         return images
     

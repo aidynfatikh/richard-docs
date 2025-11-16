@@ -40,6 +40,83 @@ export function SolutionPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Download overall JSON with all results
+  const downloadAllJSON = () => {
+    const isBatchMode = state?.batchResults !== undefined;
+    const results = isBatchMode
+      ? state.batchResults!.results.filter(r => r.success)
+      : state?.results || [];
+
+    // Create comprehensive data structure
+    const overallData: any = {
+      summary: {
+        total_files: results.length,
+        total_detections: 0,
+        total_stamps: 0,
+        total_signatures: 0,
+        total_qrs: 0,
+        processing_time_ms: isBatchMode ? state.batchResults?.meta?.total_processing_time_ms : 0,
+      },
+      files: []
+    };
+
+    // Process each result and aggregate stats
+    overallData.files = results.map((result: any) => {
+      const fileData = isBatchMode ? result : result.data;
+      const fileName = isBatchMode ? result.filename : result.fileName;
+      
+      // Safely aggregate stats with null checks
+      const summary = fileData?.summary || {};
+      overallData.summary.total_detections += summary.total_detections || 0;
+      overallData.summary.total_stamps += summary.total_stamps || 0;
+      overallData.summary.total_signatures += summary.total_signatures || 0;
+      overallData.summary.total_qrs += summary.total_qrs || 0;
+      
+      return {
+        filename: fileName,
+        summary: summary,
+        detections: {
+          stamps: fileData?.stamps || [],
+          signatures: fileData?.signatures || [],
+          qrs: fileData?.qrs || [],
+        },
+        meta: {
+          ...(fileData?.meta || {}),
+          // Remove base64 images
+          page_image: undefined,
+          transformed_image: undefined,
+        }
+      };
+    });
+
+    const jsonString = JSON.stringify(overallData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `all_documents_detections_${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Navigate to next/previous file
+  const goToNextFile = () => {
+    const results = state?.results || [];
+    if (selectedDocIndex < results.length - 1) {
+      setSelectedDocIndex(prev => prev + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const goToPreviousFile = () => {
+    if (selectedDocIndex > 0) {
+      setSelectedDocIndex(prev => prev - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   // Handle batch results from mobile scanner
   const isBatchMode = state?.batchResults !== undefined;
   const results = isBatchMode
@@ -90,8 +167,11 @@ export function SolutionPage() {
     : results.reduce((sum, r) => sum + (r as any).data.summary.total_qrs, 0);
 
   const avgProcessingTime = isBatchMode
-    ? state.batchResults!.meta.total_processing_time_ms / results.length
-    : results.reduce((sum, r) => sum + (r as any).data.meta.total_processing_time_ms, 0) / results.length;
+    ? (state.batchResults!.meta?.total_processing_time_ms || 0) / results.length
+    : results.reduce((sum, r) => {
+        const meta = (r as any).data.meta || {};
+        return sum + (meta.total_processing_time_ms || meta.page_processing_time_ms || 0);
+      }, 0) / results.length;
 
   const selectedResult = !isBatchMode && results.length > 0 ? results[selectedDocIndex] as any : null;
 
@@ -169,9 +249,25 @@ export function SolutionPage() {
           {/* Documents Selector */}
           {!isBatchMode && results.length > 1 && (
             <div className="mb-12">
-              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                Documents
-              </h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold" style={{ color: 'rgba(247, 247, 248, 1)' }}>
+                  Documents
+                </h2>
+                <button
+                  onClick={downloadAllJSON}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:brightness-110"
+                  style={{
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    color: 'rgba(34, 197, 94, 1)',
+                    border: '1px solid rgba(34, 197, 94, 0.3)'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download All Results (JSON)
+                </button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {results.map((result: any, index) => (
                   <button
@@ -206,10 +302,6 @@ export function SolutionPage() {
           {/* Selected Document Details */}
           {!isBatchMode && selectedResult && (
             <div>
-              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                Document Details
-              </h2>
-              <div>
                 {(() => {
                 const result = selectedResult;
                 const fileName = result.fileName;
@@ -511,40 +603,77 @@ export function SolutionPage() {
                         <div className="mb-3">
                           Processing Time: {(result.data.meta.total_processing_time_ms || result.data.meta.page_processing_time_ms || 0).toFixed(0)}ms
                         </div>
-                        <button
-                          onClick={() => downloadJSON(result.data, `${result.fileName}_detections.json`)}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
-                          style={{
-                            backgroundColor: 'rgba(0, 23, 255, 0.1)',
-                            color: 'rgba(0, 23, 255, 1)',
-                            border: '1px solid rgba(0, 23, 255, 0.3)'
-                          }}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          Download JSON
-                        </button>
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => downloadJSON(result.data, `${result.fileName}_detections.json`)}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110"
+                            style={{
+                              backgroundColor: 'rgba(0, 23, 255, 0.1)',
+                              color: 'rgba(0, 23, 255, 1)',
+                              border: '1px solid rgba(0, 23, 255, 0.3)'
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Download JSON
+                          </button>
+                          {results.length > 1 && (
+                            <>
+                              <button
+                                onClick={goToPreviousFile}
+                                disabled={selectedDocIndex === 0}
+                                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{
+                                  backgroundColor: 'rgba(153, 153, 153, 0.1)',
+                                  color: 'rgba(153, 153, 153, 1)',
+                                  border: '1px solid rgba(153, 153, 153, 0.3)'
+                                }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Previous
+                              </button>
+                              <span className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+                                {selectedDocIndex + 1} / {results.length}
+                              </span>
+                              <button
+                                onClick={goToNextFile}
+                                disabled={selectedDocIndex === results.length - 1}
+                                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{
+                                  backgroundColor: 'rgba(153, 153, 153, 0.1)',
+                                  color: 'rgba(153, 153, 153, 1)',
+                                  border: '1px solid rgba(153, 153, 153, 0.3)'
+                                }}
+                              >
+                                Next
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
                 );
                 })()}
-              </div>
             </div>
           )}
 
           {/* Batch Mode Results */}
           {isBatchMode && (
             <div>
-              <h2 className="text-2xl font-bold mb-6" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                Document Details
-              </h2>
               <div className="space-y-6">
                 {results.map((result: any, index) => {
                   const fileName = result.filename;
                   const data = result;
+                  const summary = data?.summary || { total_detections: 0, total_stamps: 0, total_signatures: 0, total_qrs: 0 };
+                  const meta = data?.meta || {};
 
                   return (
                   <div
@@ -579,25 +708,25 @@ export function SolutionPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                       <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                         <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(0, 23, 255, 1)' }}>
-                          {data.summary.total_detections}
+                          {summary.total_detections}
                         </div>
                         <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Total</div>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                         <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(239, 68, 68, 1)' }}>
-                          {data.summary.total_stamps}
+                          {summary.total_stamps}
                         </div>
                         <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Stamps</div>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                         <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(34, 197, 94, 1)' }}>
-                          {data.summary.total_signatures}
+                          {summary.total_signatures}
                         </div>
                         <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>Signatures</div>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
                         <div className="text-3xl font-bold mb-1" style={{ color: 'rgba(59, 130, 246, 1)' }}>
-                          {data.summary.total_qrs}
+                          {summary.total_qrs}
                         </div>
                         <div className="text-xs" style={{ color: 'rgba(153, 153, 153, 1)' }}>QR Codes</div>
                       </div>
@@ -605,13 +734,52 @@ export function SolutionPage() {
 
                     <div className="mt-4 pt-4 border-t text-xs" style={{ borderColor: 'rgba(153, 153, 153, 0.2)' }}>
                       <div className="font-semibold" style={{ color: 'rgba(247, 247, 248, 1)' }}>
-                        Processing Time: {(data.meta.total_processing_time_ms || data.meta.page_processing_time_ms || 0).toFixed(0)}ms
+                        Processing Time: {(meta.total_processing_time_ms || meta.page_processing_time_ms || 0).toFixed(0)}ms
                       </div>
                     </div>
                   </div>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Navigation buttons for normal mode at the very bottom */}
+          {!isBatchMode && results.length > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-4">
+              <button
+                onClick={goToPreviousFile}
+                disabled={selectedDocIndex === 0}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: selectedDocIndex === 0 ? 'rgba(153, 153, 153, 0.1)' : 'rgba(0, 23, 255, 1)',
+                  color: selectedDocIndex === 0 ? 'rgba(153, 153, 153, 1)' : 'rgba(255, 255, 255, 1)',
+                  border: '1px solid rgba(153, 153, 153, 0.3)'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous Document
+              </button>
+              <span className="text-sm font-medium" style={{ color: 'rgba(153, 153, 153, 1)' }}>
+                {selectedDocIndex + 1} / {results.length}
+              </span>
+              <button
+                onClick={goToNextFile}
+                disabled={selectedDocIndex === results.length - 1}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: selectedDocIndex === results.length - 1 ? 'rgba(153, 153, 153, 0.1)' : 'rgba(0, 23, 255, 1)',
+                  color: selectedDocIndex === results.length - 1 ? 'rgba(153, 153, 153, 1)' : 'rgba(255, 255, 255, 1)',
+                  border: '1px solid rgba(153, 153, 153, 0.3)'
+                }}
+              >
+                Next Document
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
           )}
         </div>

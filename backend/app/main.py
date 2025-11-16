@@ -168,7 +168,12 @@ async def detect_elements(
     
     # Process document (handles both images and PDFs)
     try:
-        pages = processor.process_file(contents, file.filename or "document")
+        # Use lazy base64 encoding - only encode for response
+        pages = await asyncio.to_thread(
+            processor.process_file, 
+            contents, 
+            file.filename or "document"
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -188,28 +193,35 @@ async def detect_elements(
     # Run detection on all pages
     try:
         start_time = time.time()
-        results = []
         
-        for img, page_num, base64_img in pages:
-            page_start = time.time()
-            
-            print(f"Processing page {page_num}: base64_img exists = {base64_img is not None}, length = {len(base64_img) if base64_img else 0}")
-            
-            # Run detection
-            result = detector.detect(img)
-            
-            # Add page-specific metadata
+        # Extract images for batch processing
+        images = [img for img, _, _ in pages]
+        
+        # Use batch inference for better performance
+        if len(images) > 1:
+            # Batch inference for multi-page PDFs
+            results = await asyncio.to_thread(
+                detector.detect_batch_optimized,
+                images
+            )
+        else:
+            # Single image detection
+            results = [await asyncio.to_thread(detector.detect, images[0])]
+        
+        # Add page metadata and base64 images
+        for i, (result, (_, page_num, base64_img)) in enumerate(zip(results, pages)):
             result["meta"]["page_number"] = page_num
-            result["meta"]["page_processing_time_ms"] = round((time.time() - page_start) * 1000, 2)
             
-            # Add base64 image if available (for PDFs)
+            # Generate base64 for PDFs if not already present
             if base64_img:
                 result["page_image"] = base64_img
-                print(f"Added page_image to result for page {page_num}, prefix: {base64_img[:50]}")
-            else:
-                print(f"No base64_img for page {page_num}")
-            
-            results.append(result)
+            elif format_info['is_pdf']:
+                # Encode page image for PDF pages
+                img = images[i]
+                success, encoded_img = cv2.imencode('.png', img)
+                if success:
+                    img_base64 = base64.b64encode(encoded_img.tobytes()).decode('utf-8')
+                    result["page_image"] = f"data:image/png;base64,{img_base64}"
         
         total_time = (time.time() - start_time) * 1000
         
@@ -237,7 +249,8 @@ async def detect_elements(
                 "meta": {
                     "total_processing_time_ms": round(total_time, 2),
                     "confidence_threshold": confidence,
-                    "is_pdf": True
+                    "is_pdf": True,
+                    "batch_optimized": True
                 }
             }
         
@@ -454,7 +467,11 @@ async def process_document(
 
     # Step 3: Process document (handles both images and PDFs)
     try:
-        pages = processor.process_file(processed_contents, file.filename or "document")
+        pages = await asyncio.to_thread(
+            processor.process_file, 
+            processed_contents, 
+            file.filename or "document"
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -463,29 +480,31 @@ async def process_document(
             detail=f"Failed to process document: {str(e)}"
         )
 
-    # Step 4: Run detection on all pages
+    # Step 4: Run detection on all pages with batch optimization
     original_confidence = detector.confidence_threshold
     if confidence != original_confidence:
         detector.confidence_threshold = confidence
 
     try:
-        results = []
-
-        for img, page_num, base64_img in pages:
-            page_start = time.time()
-
-            # Run detection
-            result = detector.detect(img)
-
-            # Add page-specific metadata
+        # Extract images for batch processing
+        images = [img for img, _, _ in pages]
+        
+        # Use batch inference for multi-page documents
+        if len(images) > 1:
+            results = await asyncio.to_thread(
+                detector.detect_batch_optimized,
+                images
+            )
+        else:
+            results = [await asyncio.to_thread(detector.detect, images[0])]
+        
+        # Add page metadata and base64 images
+        for i, (result, (_, page_num, base64_img)) in enumerate(zip(results, pages)):
             result["meta"]["page_number"] = page_num
-            result["meta"]["page_processing_time_ms"] = round((time.time() - page_start) * 1000, 2)
-
+            
             # Add base64 image if available (for PDFs)
             if base64_img:
                 result["page_image"] = base64_img
-
-            results.append(result)
 
         total_time = (time.time() - start_time) * 1000
 
@@ -615,15 +634,18 @@ async def process_single_file_batch(
         # Handle PDFs with multi-page support
         if format_info['is_pdf']:
             try:
-                pages_data = processor.pdf_to_images(contents)
+                # Use parallel PDF processing and batch detection
+                pages_data = processor.pdf_to_images(contents, enable_base64=False, parallel=True)
                 
-                # Process each page
-                page_results = []
-                for img, page_num, base64_img in pages_data:
-                    detection_result = detector.detect(img)
-                    detection_result['page_number'] = page_num
-                    detection_result['page_image'] = base64_img
-                    page_results.append(detection_result)
+                # Extract images for batch inference
+                images = [img for img, _, _ in pages_data]
+                
+                # Batch detection for all pages
+                page_results = detector.detect_batch_optimized(images)
+                
+                # Add page metadata
+                for i, (result, (_, page_num, _)) in enumerate(zip(page_results, pages_data)):
+                    result['page_number'] = page_num
                 
                 # Aggregate summary
                 total_detections = sum(p['summary']['total_detections'] for p in page_results)
