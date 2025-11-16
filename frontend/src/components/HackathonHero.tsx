@@ -205,10 +205,10 @@ export function HackathonHero() {
 
           {/* Mobile Camera Scan Button */}
           {isMobile && (
-            <div className="mb-6">
+            <div className="mb-6 flex justify-center">
               <button
                 onClick={() => navigate('/scan')}
-                className="px-8 py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-3"
+                className="px-8 py-4 rounded-xl text-lg font-bold transition-all duration-200 hover:brightness-90 shadow-lg inline-flex items-center justify-center gap-3"
                 style={{
                   backgroundColor: 'rgba(0, 23, 255, 1)',
                   color: 'rgba(255, 255, 255, 1)'
@@ -225,7 +225,7 @@ export function HackathonHero() {
 
           {/* Or Divider for mobile */}
           {isMobile && (
-            <div className="flex items-center gap-4 mb-6 w-full max-w-md">
+            <div className="flex items-center gap-4 mb-6 w-full max-w-md mx-auto">
               <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(153, 153, 153, 0.3)' }}></div>
               <span className="text-sm" style={{ color: 'rgba(153, 153, 153, 1)' }}>or upload files</span>
               <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(153, 153, 153, 0.3)' }}></div>
