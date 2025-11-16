@@ -456,13 +456,6 @@ class APIService {
       };
     }
   }
-        success: false,
-        error: {
-          detail: error instanceof Error ? error.message : 'Batch detection request failed',
-        },
-      };
-    }
-  }
 
   /**
    * Intelligent document processing - auto-classifies and applies appropriate pipeline
