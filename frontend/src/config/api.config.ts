@@ -60,7 +60,7 @@ function resolveBaseUrl(): string {
 export const API_CONFIG = {
   // Base URL for the backend API
   BASE_URL: resolveBaseUrl(),
-
+  
   // API endpoints
   ENDPOINTS: {
     DETECT: '/detect',
@@ -69,6 +69,8 @@ export const API_CONFIG = {
     HEALTH: '/health',
     SCAN_DOCUMENT: '/scan-document',
     BATCH_DETECT: '/batch-detect',
+    BATCH_PROCESS_DOCUMENT: '/batch-process-document',
+    BATCH_DETECT_HQ: '/batch-detect-hq', // High-quality mode (slower but more accurate)
   },
   
   // Request timeout in milliseconds

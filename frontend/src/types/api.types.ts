@@ -140,6 +140,50 @@ export interface BatchDetectionResponse {
 }
 
 /**
+ * Intelligent batch processing response (with classification + scanning metadata)
+ */
+export interface BatchProcessDocumentResultSuccess {
+  file_index: number;
+  filename: string;
+  success: true;
+  document_type: 'image' | 'pdf';
+  processing: ProcessingMetadata;
+  summary: DetectionSummary;
+  transformed_image?: string;
+  result?: DetectionResponse;
+  pages?: DetectionResponse[];
+}
+
+export interface BatchProcessDocumentResultError {
+  file_index: number;
+  filename: string;
+  success: false;
+  error: string;
+}
+
+export type BatchProcessDocumentResult =
+  | BatchProcessDocumentResultSuccess
+  | BatchProcessDocumentResultError;
+
+export interface BatchProcessDocumentResponse {
+  total_files: number;
+  successful_documents: number;
+  failed_documents: number;
+  results: BatchProcessDocumentResult[];
+  summary: DetectionSummary;
+  meta: {
+    total_processing_time_ms: number;
+    read_time_ms: number;
+    preprocessing_time_ms: number;
+    detection_time_ms: number;
+    confidence_threshold: number;
+    documents_ready_for_detection: number;
+    pages_processed: number;
+    max_workers: number;
+  };
+}
+
+/**
  * Document classification indicators from EXIF
  */
 export interface ExifIndicators {
@@ -223,6 +267,8 @@ export interface ProcessingMetadata {
   classification?: ClassificationResult;
   scan_reason?: string;
   scan?: ScanMetadata;
+  page_count?: number;
+  preprocessing_time_ms?: number;
 }
 
 /**

@@ -7,7 +7,7 @@ Incorporates advanced detection grouping for overlapping signatures.
 import os
 import time
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -394,15 +394,19 @@ class DocumentDetector:
         """
         return [self.detect(img, iou_threshold, image_size) for img in images]
     
-    def detect_batch_optimized(self, images: List[np.ndarray], iou_threshold: Optional[float] = None, image_size: int = 640) -> List[Dict]:
+    def detect_batch_optimized(self, images: List[np.ndarray], iou_threshold: Optional[float] = None, image_size: int = 640, batch_size: Optional[int] = None) -> List[Dict]:
         """
         Optimized batch detection using YOLO's native batch inference.
         Processes multiple images in a single forward pass for better performance.
         
+        For very large batches (1000+ images), automatically splits into sub-batches
+        to avoid memory issues while maintaining speed benefits.
+        
         Args:
             images: List of image numpy arrays (BGR format)
             iou_threshold: NMS IoU threshold (uses instance default if None)
-            image_size: Input size for model (default: 640)
+            image_size: Input size for model (default: 640 for speed, 1024 for accuracy)
+            batch_size: Maximum images per YOLO batch (None = auto, based on image count)
         
         Returns:
             List of detection result dictionaries (same format as detect())
@@ -415,15 +419,34 @@ class DocumentDetector:
         if iou_threshold is None:
             iou_threshold = self.iou_threshold
         
-        # Run batch inference - YOLO handles batching internally
-        results_batch = self.model.predict(
-            source=images,
-            conf=self.confidence_threshold,
-            iou=iou_threshold,
-            imgsz=image_size,
-            device=self.device,
-            verbose=False
-        )
+        # Auto-determine optimal batch size based on image count
+        # YOLO can handle large batches, but we split for memory safety
+        if batch_size is None:
+            if len(images) <= 32:
+                batch_size = len(images)  # Small batch - process all at once
+            elif len(images) <= 200:
+                batch_size = 32  # Medium batch
+            else:
+                batch_size = 64  # Large batch - balance speed vs memory
+        
+        # Process in sub-batches if needed
+        all_results_batch = []
+        for i in range(0, len(images), batch_size):
+            batch_images = images[i:i + batch_size]
+            
+            # Run batch inference - YOLO handles batching internally
+            results_batch = self.model.predict(
+                source=batch_images,
+                conf=self.confidence_threshold,
+                iou=iou_threshold,
+                imgsz=image_size,
+                device=self.device,
+                verbose=False,
+                batch=len(batch_images)  # Explicitly set batch size for YOLO
+            )
+            all_results_batch.extend(results_batch)
+        
+        results_batch = all_results_batch
         
         # Process each result
         batch_results = []
@@ -515,6 +538,7 @@ class DocumentDetector:
         avg_time_per_image = total_inference_time / len(images)
         
         for i, result in enumerate(batch_results):
+            result["meta"]["inference_time_ms"] = round(avg_time_per_image, 2)  # Per-image time for compatibility
             result["meta"]["batch_inference_time_ms"] = round(total_inference_time, 2)
             result["meta"]["avg_time_per_image_ms"] = round(avg_time_per_image, 2)
             result["meta"]["batch_size"] = len(images)
@@ -527,7 +551,7 @@ class DocumentDetector:
 _detector_instance = None
 
 
-def get_detector(model_path=None, confidence_threshold=0.25, device='cpu',
+def get_detector(model_path=None, confidence_threshold=0.15, device='cpu',
                 enable_grouping=True, group_iou_threshold=0.3):
     """
     Get or create detector instance (singleton).
@@ -570,6 +594,7 @@ class RealTimeDetector:
 
     def __init__(self, model_path=None, confidence_threshold=0.25, device='cpu',
                  image_size=416, iou_threshold=0.40, enable_grouping=True, group_iou_threshold=0.2):
+
         """
         Initialize real-time detector.
 
@@ -914,6 +939,7 @@ _realtime_detector_instance = None
 def get_realtime_detector(model_path=None, confidence_threshold=0.25, device='cpu',
                           image_size=416, iou_threshold=0.40, enable_grouping=True,
                           group_iou_threshold=0.2):
+
     """
     Get or create real-time detector instance (singleton).
 

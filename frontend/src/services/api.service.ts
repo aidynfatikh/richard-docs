@@ -13,6 +13,10 @@ import type {
   APIError,
   ScanDocumentResponse,
   BatchDetectionResponse,
+  BatchProcessDocumentResponse,
+  BatchProcessDocumentResult,
+  BatchProcessDocumentResultSuccess,
+  BatchProcessDocumentResultError,
   ProcessDocumentResponse,
   MultiPageProcessDocumentResponse,
   ClassifyDocumentResponse,
@@ -273,7 +277,7 @@ class APIService {
     onProgress?: (current: number, total: number) => void,
     chunkSize: number = 100,
     maxWorkers: number = 10
-  ): Promise<APIResponse<BatchDetectionResponse>> {
+  ): Promise<APIResponse<BatchProcessDocumentResponse>> {
     try {
       if (files.length === 0) {
         return {
@@ -296,7 +300,7 @@ class APIService {
       });
 
       // Add optional parameters
-      const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT));
+      const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_PROCESS_DOCUMENT));
       if (confidence !== undefined) {
         url.searchParams.append('confidence', confidence.toString());
       }
@@ -314,7 +318,7 @@ class APIService {
         120000 // 120 second timeout for batch processing
       );
 
-      const result = await handleResponse<BatchDetectionResponse>(response);
+      const result = await handleResponse<BatchProcessDocumentResponse>(response);
       
       if (onProgress) {
         onProgress(files.length, files.length);
@@ -341,7 +345,7 @@ class APIService {
     onProgress?: (current: number, total: number) => void,
     chunkSize: number = 100,
     maxWorkers: number = 10
-  ): Promise<APIResponse<BatchDetectionResponse>> {
+  ): Promise<APIResponse<BatchProcessDocumentResponse>> {
     try {
       const chunks: File[][] = [];
       for (let i = 0; i < files.length; i += chunkSize) {
@@ -350,8 +354,15 @@ class APIService {
 
       console.log(`Processing ${files.length} files in ${chunks.length} chunks of ${chunkSize}`);
 
-      let allResults: BatchDetectionResponse['results'] = [];
+      let allResults: BatchProcessDocumentResult[] = [];
       let totalProcessingTime = 0;
+      let totalReadTime = 0;
+      let totalPreprocessingTime = 0;
+      let totalDetectionTime = 0;
+      let totalDocsReady = 0;
+      let totalPagesProcessed = 0;
+      let totalSuccessfulDocs = 0;
+      let totalFailedDocs = 0;
       let processedCount = 0;
 
       // Process chunks sequentially to avoid overwhelming server
@@ -363,7 +374,7 @@ class APIService {
           formData.append('files', file);
         });
 
-        const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT));
+        const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_PROCESS_DOCUMENT));
         if (confidence !== undefined) {
           url.searchParams.append('confidence', confidence.toString());
         }
@@ -381,7 +392,7 @@ class APIService {
           120000
         );
 
-        const chunkResult = await handleResponse<BatchDetectionResponse>(response);
+        const chunkResult = await handleResponse<BatchProcessDocumentResponse>(response);
         
         if (!chunkResult.success || !chunkResult.data) {
           throw new Error(`Chunk ${i + 1} failed: ${chunkResult.error?.detail}`);
@@ -392,9 +403,15 @@ class APIService {
           ...r,
           file_index: r.file_index + (i * chunkSize)
         }));
-
         allResults = [...allResults, ...adjustedResults];
         totalProcessingTime += chunkResult.data.meta.total_processing_time_ms;
+        totalReadTime += chunkResult.data.meta.read_time_ms;
+        totalPreprocessingTime += chunkResult.data.meta.preprocessing_time_ms;
+        totalDetectionTime += chunkResult.data.meta.detection_time_ms;
+        totalDocsReady += chunkResult.data.meta.documents_ready_for_detection;
+        totalPagesProcessed += chunkResult.data.meta.pages_processed;
+        totalSuccessfulDocs += chunkResult.data.successful_documents;
+        totalFailedDocs += chunkResult.data.failed_documents;
         processedCount += chunk.length;
 
         // Update progress
@@ -406,8 +423,8 @@ class APIService {
       }
 
       // Aggregate results
-      const successfulResults = allResults.filter(r => r.success);
-      const failedResults = allResults.filter(r => !r.success);
+      const successfulResults = allResults.filter((r): r is BatchProcessDocumentResultSuccess => r.success);
+      const failedResults = allResults.filter((r): r is BatchProcessDocumentResultError => !r.success);
 
       // Calculate aggregate summary
       const totalDetections = successfulResults.reduce((sum, r) => 
@@ -423,10 +440,10 @@ class APIService {
         sum + (r.summary?.total_qrs || 0), 0
       );
 
-      const aggregatedResponse: BatchDetectionResponse = {
+      const aggregatedResponse: BatchProcessDocumentResponse = {
         total_files: files.length,
-        successful_detections: successfulResults.length,
-        failed_detections: failedResults.length,
+        successful_documents: totalSuccessfulDocs,
+        failed_documents: totalFailedDocs || failedResults.length,
         results: allResults,
         summary: {
           total_detections: totalDetections,
@@ -436,9 +453,13 @@ class APIService {
         },
         meta: {
           total_processing_time_ms: totalProcessingTime,
-          avg_time_per_file_ms: totalProcessingTime / files.length,
-          confidence_threshold: confidence || 0.25,
-          parallel_workers: maxWorkers
+          read_time_ms: totalReadTime,
+          preprocessing_time_ms: totalPreprocessingTime,
+          detection_time_ms: totalDetectionTime,
+          confidence_threshold: confidence ?? 0.15,
+          documents_ready_for_detection: totalDocsReady,
+          pages_processed: totalPagesProcessed,
+          max_workers: maxWorkers
         }
       };
 
@@ -549,6 +570,75 @@ class APIService {
         success: false,
         error: {
           detail: error instanceof Error ? error.message : 'Classify document request failed',
+        },
+      };
+    }
+  }
+
+  /**
+   * High-quality batch detection with full classification and higher resolution
+   * Slower but more accurate - best for legal documents
+   * @param files - Array of image/PDF files
+   * @param confidence - Optional confidence threshold (0-1)
+   * @param onProgress - Optional progress callback
+   * @param maxWorkers - Parallel workers on backend (default 10)
+   */
+  async batchDetectHighQuality(
+    files: File[],
+    confidence?: number,
+    onProgress?: (current: number, total: number) => void,
+    maxWorkers: number = 10
+  ): Promise<APIResponse<BatchDetectionResponse>> {
+    try {
+      if (files.length === 0) {
+        return {
+          success: false,
+          error: { detail: 'No files provided' }
+        };
+      }
+
+      if (files.length > 1000) {
+        return {
+          success: false,
+          error: { detail: 'Too many files for high-quality mode. Maximum 1000 files.' }
+        };
+      }
+
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const url = new URL(this.getURL(API_CONFIG.ENDPOINTS.BATCH_DETECT_HQ));
+      if (confidence !== undefined) {
+        url.searchParams.append('confidence', confidence.toString());
+      }
+      url.searchParams.append('max_workers', maxWorkers.toString());
+
+      const response = await fetchWithTimeout(
+        url.toString(),
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+          },
+        },
+        180000 // 180 second timeout for high-quality processing
+      );
+
+      const result = await handleResponse<BatchDetectionResponse>(response);
+      
+      if (onProgress) {
+        onProgress(files.length, files.length);
+      }
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          detail: error instanceof Error ? error.message : 'High-quality batch detection failed',
         },
       };
     }

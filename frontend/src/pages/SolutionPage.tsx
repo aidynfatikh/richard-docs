@@ -1,6 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import type { DetectionResponse, BatchDetectionResponse, Detection } from '../types/api.types';
+import type {
+  DetectionResponse,
+  BatchDetectionResponse,
+  BatchProcessDocumentResponse,
+  Detection
+} from '../types/api.types';
 import { ImageWithDetections } from '../components/ImageWithDetections';
 
 interface SolutionPageState {
@@ -10,7 +15,7 @@ interface SolutionPageState {
     data: DetectionResponse;
     pages?: DetectionResponse[]; // For multi-page PDFs
   }>;
-  batchResults?: BatchDetectionResponse;
+  batchResults?: BatchDetectionResponse | BatchProcessDocumentResponse;
 }
 
 export function SolutionPage() {

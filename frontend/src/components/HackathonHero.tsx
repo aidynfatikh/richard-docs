@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { validateFile, formatFileSize, getAcceptAttribute } from '../utils/fileValidation';
 import { apiService } from '../services/api.service';
-import type { DetectionResponse } from '../types/api.types';
+import type { DetectionResponse, ProcessDocumentResponse, BatchDetectionResponse, BatchProcessDocumentResponse } from '../types/api.types';
 import { detectDevice } from '../utils/deviceDetection';
 
 export function HackathonHero() {
@@ -81,6 +81,8 @@ export function HackathonHero() {
     setFiles([]);
   };
 
+  const [useHighQuality, setUseHighQuality] = useState(false);
+
   const handleInspect = async () => {
     setError('');
     
@@ -93,86 +95,148 @@ export function HackathonHero() {
     setProgress({ current: 0, total: files.length });
 
     try {
-      // Use batch endpoint for optimal performance (handles 1000+ files)
-      const batchResult = await apiService.batchDetect(
-        files,
-        0.25,
-        (current, total) => {
-          setProgress({ current, total });
-        },
-        100, // chunk size
-        10   // max parallel workers
-      );
+      // Use selected quality mode
+      const batchResult = useHighQuality
+        ? await apiService.batchDetectHighQuality(
+            files,
+            0.15,
+            (current, total) => {
+              setProgress({ current, total });
+            },
+            10  // max parallel workers
+          )
+        : await apiService.batchDetect(
+            files,
+            0.15,
+            (current, total) => {
+              setProgress({ current, total });
+            },
+            100, // chunk size
+            10   // max parallel workers
+          );
 
       if (!batchResult.success || !batchResult.data) {
         throw new Error(batchResult.error?.detail || 'Batch processing failed');
       }
 
-      const batchData = batchResult.data;
-
-      // Transform batch results into format expected by SolutionPage
       const successfulResults: Array<{ 
         fileName: string; 
         fileObject: File | null; 
-        data: DetectionResponse;
-        pages?: DetectionResponse[]; // For multi-page PDFs
+        data: DetectionResponse | ProcessDocumentResponse;
+        pages?: DetectionResponse[];
       }> = [];
       const errors: string[] = [];
 
-      batchData.results.forEach((result) => {
-        if (result.success) {
-          // Check if it's a multi-page PDF
+      const summaryStats = {
+        totalFiles: 0,
+        successCount: 0,
+        failCount: 0,
+        totalTimeMs: 0,
+        avgPerFileMs: 0,
+        workerLabel: '',
+      };
+
+      if (useHighQuality) {
+        const batchData = batchResult.data as BatchDetectionResponse;
+        summaryStats.totalFiles = batchData.total_files;
+        summaryStats.successCount = batchData.successful_detections;
+        summaryStats.failCount = batchData.failed_detections;
+        summaryStats.totalTimeMs = batchData.meta.total_processing_time_ms;
+        summaryStats.avgPerFileMs = batchData.meta.avg_time_per_file_ms;
+        summaryStats.workerLabel = `parallel=${batchData.meta.parallel_workers}`;
+
+        batchData.results.forEach((result) => {
+          if (!result.success) {
+            errors.push(`${result.filename}: ${result.error || 'Unknown error'}`);
+            return;
+          }
+
           if ('total_pages' in result && 'pages' in result) {
-            const multiPageResult = result as any;
-            
-            // Calculate aggregate summary for the whole PDF
-            const aggregateSummary = {
-              total_detections: result.summary.total_detections,
-              total_stamps: result.summary.total_stamps,
-              total_signatures: result.summary.total_signatures,
-              total_qrs: result.summary.total_qrs,
-            };
-            
-            // Store all pages data
+            const pages = (result as any).pages as DetectionResponse[];
+            if (pages?.length) {
+              successfulResults.push({
+                fileName: result.filename,
+                fileObject: null,
+                data: {
+                  ...pages[0],
+                  summary: result.summary,
+                },
+                pages,
+              });
+            } else {
+              errors.push(`${result.filename}: Missing page data`);
+            }
+          } else {
             successfulResults.push({
               fileName: result.filename,
-              fileObject: null,
-              data: {
-                ...multiPageResult.pages[0], // Use first page's structure
-                summary: aggregateSummary,
-              },
-              pages: multiPageResult.pages // Store all pages
-            });
-          } else {
-            // Single image file
-            successfulResults.push({ 
-              fileName: result.filename, 
-              fileObject: files[result.file_index], 
-              data: result as DetectionResponse
+              fileObject: files[result.file_index] ?? null,
+              data: result as DetectionResponse,
             });
           }
-        } else {
-          errors.push(`${result.filename}: ${result.error || 'Unknown error'}`);
-        }
-      });
+        });
+      } else {
+        const batchData = batchResult.data as BatchProcessDocumentResponse;
+        summaryStats.totalFiles = batchData.total_files;
+        summaryStats.successCount = batchData.successful_documents;
+        summaryStats.failCount = batchData.failed_documents;
+        summaryStats.totalTimeMs = batchData.meta.total_processing_time_ms;
+        summaryStats.avgPerFileMs = batchData.total_files
+          ? batchData.meta.total_processing_time_ms / batchData.total_files
+          : 0;
+        summaryStats.workerLabel = `max_workers=${batchData.meta.max_workers}`;
+
+        batchData.results.forEach((doc) => {
+          if (!doc.success) {
+            errors.push(`${doc.filename}: ${doc.error || 'Unknown error'}`);
+            return;
+          }
+
+          if (doc.pages && doc.pages.length > 0) {
+            successfulResults.push({
+              fileName: doc.filename,
+              fileObject: null,
+              data: {
+                ...doc.pages[0],
+                summary: doc.summary,
+                processing: doc.processing,
+                transformed_image: doc.transformed_image,
+              },
+              pages: doc.pages,
+            });
+            return;
+          }
+
+          if (doc.result) {
+            successfulResults.push({
+              fileName: doc.filename,
+              fileObject: files[doc.file_index] ?? null,
+              data: {
+                ...doc.result,
+                processing: doc.processing,
+                transformed_image: doc.transformed_image,
+              },
+            });
+          } else {
+            errors.push(`${doc.filename}: Missing detection result`);
+          }
+        });
+      }
 
       if (errors.length > 0) {
-        setError(`${errors.length} file(s) failed. ${batchData.successful_detections} succeeded.`);
+        setError(`${errors.length} file(s) failed. ${summaryStats.successCount} succeeded.`);
       } else if (successfulResults.length === 0) {
         setError('All files failed to process');
       } else {
-        // Navigate to solution page with results
         navigate('/solution', { state: { results: successfulResults } });
       }
 
-      // Log performance stats
       console.log(`✅ Batch processing complete:`);
-      console.log(`   Total files: ${batchData.total_files}`);
-      console.log(`   Successful: ${batchData.successful_detections}`);
-      console.log(`   Failed: ${batchData.failed_detections}`);
-      console.log(`   Total time: ${batchData.meta.total_processing_time_ms.toFixed(0)}ms`);
-      console.log(`   Avg per file: ${batchData.meta.avg_time_per_file_ms.toFixed(0)}ms`);
-      console.log(`   Parallel workers: ${batchData.meta.parallel_workers}`);
+      console.log(`   Total files: ${summaryStats.totalFiles}`);
+      console.log(`   Successful: ${summaryStats.successCount}`);
+      console.log(`   Failed: ${summaryStats.failCount}`);
+      console.log(`   Total time: ${summaryStats.totalTimeMs.toFixed(0)}ms`);
+      console.log(`   Avg per file: ${summaryStats.avgPerFileMs.toFixed(0)}ms`);
+      console.log(`   Workers: ${summaryStats.workerLabel}`);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process documents');
@@ -300,27 +364,47 @@ export function HackathonHero() {
                       Clear All
                     </button>
                   </div>
-                  <button
-                    onClick={handleInspect}
-                    disabled={isProcessing}
-                    className="w-full sm:w-auto px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 mr-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: 'rgba(0, 23, 255, 1)',
-                      color: 'rgba(255, 255, 255, 1)'
-                    }}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      'Analyze Documents'
-                    )}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* Quality Toggle */}
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={useHighQuality}
+                        onChange={(e) => setUseHighQuality(e.target.checked)}
+                        disabled={isProcessing}
+                        className="sr-only"
+                      />
+                      <div className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        style={{ backgroundColor: useHighQuality ? 'rgba(0, 23, 255, 1)' : 'rgba(153, 153, 153, 0.3)' }}
+                      >
+                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${useHighQuality ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: 'rgba(247, 247, 248, 1)' }} title={useHighQuality ? 'High quality mode: Full classification + 1024px resolution (slower)' : 'Fast mode: EXIF-only + 640px resolution (faster)'}>
+                        {useHighQuality ? '🎯 High Quality' : '⚡ Fast Mode'}
+                      </span>
+                    </label>
+                    <button
+                      onClick={handleInspect}
+                      disabled={isProcessing}
+                      className="px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:brightness-90 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: 'rgba(0, 23, 255, 1)',
+                        color: 'rgba(255, 255, 255, 1)'
+                      }}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Processing...
+                        </>
+                      ) : (
+                        'Analyze Documents'
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-40 overflow-y-auto space-y-2" style={{
                   scrollbarWidth: 'thin',
